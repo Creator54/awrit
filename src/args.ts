@@ -10,6 +10,8 @@ export const possibleOptions = {
   transparent: { short: 't', description: 'Make the window transparent' },
   'debug-paint': { short: 'p', description: 'Debug paint' },
   rebuild: { short: 'r', description: 'Rebuild the toolbar' },
+  'toggle-url-bar': { short: 'b', description: 'Toggle URL bar visibility' },
+  'window-size': { short: 'w', description: 'Window size as WIDTHxHEIGHT', string: true, arg: 'WIDTHxHEIGHT' },
 } as const;
 
 export type Option = keyof typeof possibleOptions;

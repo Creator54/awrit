@@ -22,14 +22,37 @@ let homepage = 'https://github.com/chase/awrit';
 function loadConfig(config: typeof import('../config.js')) {
   if (config.homepage) homepage = config.homepage;
   if (config.keybindings) {
+    // Create a clean keybindings object for loadKeyBindings
+    const bindings: Record<string, any> = {};
     if (process.platform === 'darwin') {
-      Object.assign(config.keybindings, config.keybindings.mac);
-      config.keybindings.linux = undefined;
+      if (config.keybindings.mac) {
+        Object.assign(bindings, config.keybindings.mac);
+      }
     } else {
-      Object.assign(config.keybindings, config.keybindings.linux);
-      config.keybindings.mac = undefined;
+      if (config.keybindings.linux) {
+        Object.assign(bindings, config.keybindings.linux);
+      }
     }
-    loadKeyBindings(config);
+    // Add common keybindings that exist at top level
+    const topLevelKeys = ['<C-c>', '<Mouse4>', '<Mouse5>'];
+    for (const key of topLevelKeys) {
+      if ((config.keybindings as any)[key]) {
+        bindings[key] = (config.keybindings as any)[key];
+      }
+    }
+    loadKeyBindings({ keybindings: bindings });
+  }
+  if (config.profile !== undefined) {
+    const { loadSessionConfig } = require('./session');
+    loadSessionConfig({ profile: config.profile });
+  }
+  // Load kitty config for mouse coordinate mapping
+  if (config.kitty?.cellSize) {
+    const { setCellSize, setCellPadding } = require('./inputHandler');
+    setCellSize(config.kitty.cellSize.width, config.kitty.cellSize.height);
+    if (config.kitty.padding) {
+      setCellPadding(config.kitty.padding.x, config.kitty.padding.y);
+    }
   }
 }
 
@@ -62,6 +85,15 @@ dialog.showErrorBox = (title, content) => {
 };
 
 const INITIAL_URL = options.url || homepage;
+
+// Handle --toggle-url-bar CLI argument
+let urlBarVisible = true;
+if (options['toggle-url-bar'] === true) {
+  urlBarVisible = false;
+}
+
+// Export for use in windows.ts
+(globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = urlBarVisible;
 
 let exiting = false;
 let quitListening = () => {};
@@ -129,6 +161,11 @@ app.commandLine.appendSwitch('silent-debugger-extension-api');
 
 // Prevent sysctlbyname crash: https://github.com/electron/electron/issues/45653#issuecomment-2663510200
 app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin');
+
+// Enable remote debugging port for programmatic control
+app.commandLine.appendSwitch('remote-debugging-port', '9222');
+// Allow remote connections (for external CDP clients)
+app.commandLine.appendSwitch('remote-allow-origins', '*');
 
 app.whenReady().then(async () => {
   const window = await createWindowWithToolbar(getWindowSize(), INITIAL_URL);

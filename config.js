@@ -3,6 +3,55 @@
  **/
 const homepage = 'https://github.com/chase/awrit';
 
+/** URL Bar Configuration
+ * Controls the visibility and toggle behavior of the URL bar
+ **/
+const urlBar = {
+  /** Show URL bar by default on startup */
+  defaultVisible: true,
+  /** Keybind to toggle URL bar visibility */
+  toggleKey: '<A-u>',
+};
+
+/** Profile Configuration
+ * Path to user data directory for cookies, sessions, extensions
+ * Set to null to use default Electron profile location
+ * Can be overridden via AWRIT_PROFILE environment variable
+ **/
+const profile = process.env.AWRIT_PROFILE || null;
+
+/** Debug Port
+ * Port for remote debugging (CDP) - for programmatic control
+ * External clients can connect to ws://localhost:<port>/devtools/...
+ **/
+const debugPort = 9222;
+
+/** Kitty Integration
+ * Configuration for running awrit in Kitty terminal splits
+ **/
+const kitty = {
+  /** Run with hold to keep terminal open */
+  hold: false,
+  /** Close on Ctrl+C (set to false to disable default quit) */
+  quitOnCtrlC: true,
+  /** Character cell size for mouse coordinate conversion
+   * Adjust these based on your terminal font size
+   * width: width of each character in pixels
+   * height: height of each character in pixels
+   */
+  cellSize: {
+    width: 8,
+    height: 20,
+  },
+  /** Terminal padding/margin offset (in pixels)
+   * Matches Kitty's window_padding_width setting (30px in this config)
+   */
+  padding: {
+    x: 30,
+    y: 30,
+  },
+};
+
 /** Keybindings
  *
  * @typedef {import('./src/keybindings').KeyBindingAction} KeyBindingAction
@@ -93,9 +142,32 @@ function find({ view }) {
   view.focusedContent = view.toolbar.webContents;
 }
 
+/** @type {KeyBindingAction} */
+let _urlBarHidden = false;
+function toggleUrlBar({ view }) {
+  _urlBarHidden = !_urlBarHidden;
+  view.toolbar.webContents.send('toolbar:toggle-url-bar');
+  view.toolbarNode.height = _urlBarHidden ? { value: 0, unit: 'px' } : { value: 40, unit: 'px' };
+  view.relayout();
+}
+
 const config = {
   homepage,
-  keybindings,
+  keybindings: {
+    ...keybindings,
+    linux: {
+      ...keybindings.linux,
+      '<A-u>': toggleUrlBar,
+    },
+    mac: {
+      ...keybindings.mac,
+      '<M-u>': toggleUrlBar,
+    },
+  },
+  urlBar,
+  profile,
+  debugPort,
+  kitty,
 };
 
 module.exports = config;

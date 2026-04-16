@@ -17,6 +17,8 @@ export interface BrowserToolbar {
   findInPage: (text: string, options: { forward: boolean; matchCase: boolean }) => void;
   stopFindInPage: () => void;
   onToggleFind: (callback: () => void) => void;
+  onToggleUrlBar: (callback: () => void) => void;
+  onSetUrlBarVisible: (callback: (visible: boolean) => void) => void;
 }
 
 declare global {
@@ -51,6 +53,7 @@ export function Toolbar() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [url, setUrl] = createSignal('');
   const [isFindMode, setIsFindMode] = createSignal(false);
+  const [urlBarVisible, setUrlBarVisible] = createSignal(true);
   const [navigationState, setNavigationState] = createSignal<NavigationState>({
     canGoBack: false,
     canGoForward: false,
@@ -73,6 +76,12 @@ export function Toolbar() {
       setIsFindMode(false);
       window.ipc.stopFindInPage();
     }
+  });
+  window.ipc.onToggleUrlBar(() => {
+    setUrlBarVisible((prev) => !prev);
+  });
+  window.ipc.onSetUrlBarVisible((visible: boolean) => {
+    setUrlBarVisible(visible);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -125,7 +134,8 @@ export function Toolbar() {
   };
 
   return (
-    <div class="h-screen flex items-center bg-kitty-bg border-b-2 border-kitty-fg/20 border-active-border text-kitty-fg">
+    <div class={`h-screen flex items-center border-active-border text-kitty-fg ${urlBarVisible() ? 'bg-kitty-bg border-b-2 border-kitty-fg/20' : 'bg-transparent'}`}>
+      <Show when={urlBarVisible()}>
       <div class="flex items-center w-full h-full px-1 box-border">
         <Show when={isFindMode()}>
           <div class="flex gap-1 mx-1">
@@ -155,41 +165,42 @@ export function Toolbar() {
           </label>
         </Show>
         <Show when={!isFindMode()}>
-          <div class="flex gap-1 mx-1">
-            <Button
-              title="Back"
-              disabled={!navigationState().canGoBack}
-              onClick={() => window.ipc.navigateBack()}
-              class="text-xl pb-[1px]"
-            >
-              ←
-            </Button>
-            <Button
-              title="Forward"
-              disabled={!navigationState().canGoForward}
-              onClick={() => window.ipc.navigateForward()}
-              class="text-xl pb-[1px]"
-            >
-              →
-            </Button>
-            <Button title={isLoading() ? 'Stop' : 'Refresh'} onClick={() => window.ipc.refresh()}>
-              {isLoading() ? '✕' : '↻'}
-            </Button>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Enter URL"
-            value={url()}
-            spellcheck="false"
-            onClick={handleInputClick}
-            onKeyDown={handleUrlSubmit}
-            class={`flex-1 h-6 px-1 text-sm border rounded-xs border-kitty-fg/50 focus:border-kitty-fg selection:bg-selection-background selection:text-selection-foreground focus:outline-none ${
-              isLoading() ? 'bg-kitty-fg/10 border-kitty-fg/50 text-kitty-fg/50' : 'bg-kitty-fg/10'
-            }`}
-          />
+            <div class="flex gap-1 mx-1">
+              <Button
+                title="Back"
+                disabled={!navigationState().canGoBack}
+                onClick={() => window.ipc.navigateBack()}
+                class="text-xl pb-[1px]"
+              >
+                ←
+              </Button>
+              <Button
+                title="Forward"
+                disabled={!navigationState().canGoForward}
+                onClick={() => window.ipc.navigateForward()}
+                class="text-xl pb-[1px]"
+              >
+                →
+              </Button>
+              <Button title={isLoading() ? 'Stop' : 'Refresh'} onClick={() => window.ipc.refresh()}>
+                {isLoading() ? '✕' : '↻'}
+              </Button>
+            </div>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Enter URL"
+              value={url()}
+              spellcheck="false"
+              onClick={handleInputClick}
+              onKeyDown={handleUrlSubmit}
+              class={`flex-1 h-6 px-1 text-sm border rounded-xs border-kitty-fg/50 focus:border-kitty-fg selection:bg-selection-background selection:text-selection-foreground focus:outline-none ${
+                isLoading() ? 'bg-kitty-fg/10 border-kitty-fg/50 text-kitty-fg/50' : 'bg-kitty-fg/10'
+              }`}
+            />
         </Show>
       </div>
+      </Show>
     </div>
   );
 }

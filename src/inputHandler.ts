@@ -4,8 +4,11 @@ import { focusedView } from './windows';
 
 const WHEEL_DELTA = 100;
 
+export function setCellSize(_width: number, _height: number) {}
+
+export function setCellPadding(_x: number, _y: number) {}
+
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
-// this is a fix for Electron going back and forth on what's supported for modifiers, despite being case insensitive;
 type KeyEventModifiers = Lowercase<KeyEventOriginal['modifiers'][number]>[];
 type KeyEvent = Omit<KeyEventOriginal, 'modifiers'> & {
   modifiers: KeyEventModifiers;
@@ -24,7 +27,6 @@ export function handleInput(evt: TermEvent) {
 
   switch (evt.eventType) {
     case 'key': {
-      // First check if this is a keybinding
       if (handleKeyBinding(evt, view)) {
         return;
       }
@@ -53,6 +55,12 @@ export function handleInput(evt: TermEvent) {
       break;
     }
 
+    case 'resize':
+      break;
+
+    case 'focus':
+      break;
+
     case 'mouse': {
       const { kind, button, x, y, modifiers } = evt.mouseEvent;
       if (
@@ -64,21 +72,23 @@ export function handleInput(evt: TermEvent) {
         return;
       }
 
-      const DPI_SCALE = view.layoutContainer.devicePixelRatio;
       const rawX = x ?? 0;
       const rawY = y ?? 0;
 
-      // Determine which region we're in based on layout
-      const { toolbarNode, contentNode } = view;
+      const { toolbarNode, contentNode, layoutContainer } = view;
+      const dpr = layoutContainer.devicePixelRatio;
+
+      // Determine if click is in toolbar or content area
+      // Mouse coords from Kitty (SGR-pixel mode) are in terminal pixels = device pixels
       const isInToolbar = rawY < contentNode.deviceLayout.y;
 
-      // Calculate position relative to the target component
-      const adjustedX = Math.floor(rawX / DPI_SCALE);
-      const adjustedY = Math.floor(
-        (rawY - (isInToolbar ? 0 : toolbarNode.deviceLayout.height)) / DPI_SCALE,
-      );
+      // Pick target webContents and compute coordinates relative to it
+      const targetNode = isInToolbar ? toolbarNode : contentNode;
+      const targetContents = isInToolbar ? view.toolbar.webContents : view.content.webContents;
 
-      const focusedContent = isInToolbar ? view.toolbar.webContents : view.content.webContents;
+      // Convert from terminal pixels to CSS pixels relative to the target area
+      const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);
+      const adjustedY = Math.floor((rawY - targetNode.deviceLayout.y) / dpr);
 
       if (kind === 'scrollUp' || kind === 'scrollDown') {
         view.content.webContents.sendInputEvent({
@@ -107,7 +117,7 @@ export function handleInput(evt: TermEvent) {
       const electronButton =
         button === 'fourth' || button === 'fifth' || button == null ? undefined : button;
 
-      focusedContent.sendInputEvent({
+      targetContents.sendInputEvent({
         type: kind,
         x: adjustedX,
         y: adjustedY,
@@ -117,15 +127,15 @@ export function handleInput(evt: TermEvent) {
       });
 
       if (kind === 'mouseDown' && button === 'left') {
-        if (focusedContent !== view.focusedContent) {
-          if (focusedContent === view.content.webContents) {
+        if (targetContents !== view.focusedContent) {
+          if (targetContents === view.content.webContents) {
             view.toolbar.blurWebView();
             view.content.focusOnWebView();
           } else {
             view.content.blurWebView();
             view.toolbar.focusOnWebView();
           }
-          view.focusedContent = focusedContent;
+          view.focusedContent = targetContents;
         }
       }
       break;

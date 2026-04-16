@@ -1,24 +1,12 @@
-#!/usr/bin/env bash
+#!/usr/bin/env nix-shell
+#!nix-shell "shell.nix" -i bash
+#: Run awrit with all Electron dependencies from nix-shell
+#:
+#: Usage:
+#:   ./awrit [options] [url]
+#:
+#: For Kitty keybinding (kitty.conf):
+#:   map ctrl+shift+b launch --location=split --cwd=current ./awrit
 
-set -e
-
-# readlink -f but works on macOS too
-resolve_link() {
-  local target="$1"
-  while [ -L "$target" ]; do
-    target="$(readlink "$target")"
-    if [[ "$target" != /* ]]; then
-      target="$(dirname "$1")/$target"
-    fi
-  done
-  echo "$target"
-}
-
-BASE_DIR=$(cd -- "$(dirname -- "$(resolve_link "${BASH_SOURCE:-$0}")")" &>/dev/null && pwd)
-if [ ! -d "$BASE_DIR/node_modules" ]; then
-    "$BASE_DIR/setup.sh"
-fi
-
-BUN="$BASE_DIR/.bun/bin/bun"
-echo "shim" "$@" > "$BASE_DIR/awrit_error.txt"
-exec -a awrit "$BUN" run "$BASE_DIR/src/runner" "$@" 2>"$BASE_DIR/awrit_error.txt"
+cd "$(dirname "$0")"
+exec bun run ./src/runner "$@"

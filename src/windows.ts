@@ -9,8 +9,11 @@ import path from 'node:path';
 import { registerPaintedContent, registerPaintedContentFallback } from './paint';
 import { sessionPromise } from './session';
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
-import { paintInitialFrame } from './tty/kittyGraphics';
+import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
+import * as out from './tty/output';
 import { getWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
+
+export { getWindowSize };
 import { options } from './args';
 import { console_ } from './console';
 import { TOOLBAR_PORT } from './runner/ports';
@@ -41,6 +44,7 @@ export type WindowView = {
   layoutContainer: LayoutContainer;
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
+  relayout: () => void;
 } & Actions;
 
 export const focusedView: {
@@ -96,8 +100,16 @@ export async function createWindowWithToolbar(
     getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
   );
 
+  // Check initial URL bar visibility (from CLI or config)
+  // @ts-ignore - global variable set in index.ts
+  const initialUrlBarVisible = (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ !== false;
+
+  // Expose URL bar visibility to toolbar renderer
+  // @ts-ignore
+  (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = initialUrlBarVisible;
+
   // Create layout nodes for toolbar and content
-  const toolbarNode = row({ height: px(TOOLBAR_HEIGHT), tag: 'toolbar' });
+  const toolbarNode = row({ height: px(initialUrlBarVisible ? TOOLBAR_HEIGHT : 0), tag: 'toolbar' });
   const contentNode = row({ height: auto(), tag: 'content' });
 
   const hasAnimation = features.current?.loadFrame && features.current.compositeFrame;
@@ -125,6 +137,8 @@ export async function createWindowWithToolbar(
   const toolbar = new BrowserWindow({
     ...sharedConstructorOptions,
     ...toolbarNode.computedLayout,
+    transparent: true,
+    backgroundColor: '#00000000',
 
     webPreferences: {
       zoomFactor: 1,
@@ -160,6 +174,7 @@ export async function createWindowWithToolbar(
     if (hasAnimation) {
       const containerBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
       containerBuffer.writeEmpty();
+      out.placeCursor({ x: 0, y: 0 });
       const containerFrame = paintInitialFrame(containerBuffer, size);
       destructors.push(
         containerFrame.free,
@@ -215,6 +230,16 @@ export async function createWindowWithToolbar(
     layoutContainer,
     toolbarNode,
     contentNode,
+    relayout() {
+      for (const destructor of destructors) {
+        destructor();
+      }
+      destructors.length = 0;
+      clearPlacements();
+      const size = getWindowSize();
+      updateViewSizes(this, size);
+      registerPaints(padSize(size));
+    },
     back: () => {
       content.webContents.goBack();
     },
@@ -231,20 +256,17 @@ export async function createWindowWithToolbar(
   focusedView.current = view;
 
   // Set up IPC for toolbar interactions
-  setupToolbarIPC(toolbar.webContents, content.webContents);
+  setupToolbarIPC(toolbar.webContents, content.webContents, view);
+
+  // Send initial URL bar visibility state to toolbar
+  toolbar.webContents.once('did-finish-load', () => {
+    toolbar.webContents.send('toolbar:set-url-bar-visible', initialUrlBarVisible);
+  });
 
   process.on(
     'SIGWINCH',
     debounce(100, () => {
-      for (const destructor of destructors) {
-        destructor();
-      }
-      destructors.length = 0;
-
-      const size = getWindowSize();
-      console_.error('resize', size);
-      updateViewSizes(view, size);
-      registerPaints(padSize(size));
+      view.relayout();
     }),
   );
 
@@ -269,6 +291,7 @@ function updateViewSizes(view: WindowView, { width, height }: Size) {
 function setupToolbarIPC(
   toolbarContents: Electron.WebContents,
   contentContents: Electron.WebContents,
+  view: WindowView,
 ) {
   ipcMain.on('toolbar:navigate-back', () => {
     if (contentContents.navigationHistory.canGoBack()) {
@@ -288,6 +311,14 @@ function setupToolbarIPC(
 
   ipcMain.on('toolbar:navigate-to', (_event, url: string) => {
     contentContents.loadURL(url);
+  });
+
+  let urlBarHidden = (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ === false;
+  ipcMain.on('toolbar:toggle-url-bar', () => {
+    urlBarHidden = !urlBarHidden;
+    toolbarContents.send('toolbar:toggle-url-bar');
+    view.toolbarNode.height = px(urlBarHidden ? 0 : TOOLBAR_HEIGHT);
+    view.relayout();
   });
 
   contentContents.on('did-start-loading', () => {
