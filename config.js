@@ -98,12 +98,15 @@ const kitty = {
  * }}
  */
 const keybindings = {
-  '<C-c>': () => {
-    process.emit('SIGINT');
-  },
-  '<Mouse4>': back,
-  '<Mouse5>': forward,
   mac: {
+    '<M-c>': copy,
+    '<M-C>': copy,
+    '<M-v>': paste,
+    '<M-V>': paste,
+    '<M-q>': quit,
+    '<M-Q>': quit,
+    '<M-d>': quit,
+    '<M-w>': quit,
     '<M-a>': ({ view }) => {
       view.focusedContent.selectAll();
     },
@@ -113,11 +116,18 @@ const keybindings = {
     '<M-r>': refresh,
   },
   linux: {
+    '<C-c>': copy,
+    '<C-S-v>': paste, // standard terminal paste
+    '<C-S-V>': paste, // uppercase V variant just in case
+    '<C-q>': quit,
+    '<C-d>': quit,
     '<C-]>': forward,
     '<C-[>': back,
     '<C-f>': find,
     '<C-r>': refresh,
   },
+  '<Mouse4>': back,
+  '<Mouse5>': forward,
 };
 
 /** @type {KeyBindingAction} */
@@ -140,6 +150,21 @@ function find({ view }) {
   view.content.blurWebView();
   view.toolbar.focusOnWebView();
   view.focusedContent = view.toolbar.webContents;
+}
+
+/** @type {KeyBindingAction} */
+function copy({ view }) {
+  view.focusedContent.copy();
+}
+
+/** @type {KeyBindingAction} */
+function paste({ view }) {
+  view.focusedContent.paste();
+}
+
+/** @type {KeyBindingAction} */
+function quit() {
+  process.emit('SIGINT');
 }
 
 /** @type {KeyBindingAction} */
