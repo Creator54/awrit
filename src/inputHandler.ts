@@ -3,6 +3,12 @@ import { handleEvent as handleKeyBinding } from './keybindings';
 import { focusedView } from './windows';
 
 const WHEEL_DELTA = 100;
+const NAVIGATION_THRESHOLD = 3;
+const NAVIGATION_COOLDOWN = 500;
+
+let horizontalScrollAccumulator = 0;
+let lastNavigationTime = 0;
+let lastScrollTime = 0;
 
 export function setCellSize(_width: number, _height: number) {}
 
@@ -106,6 +112,48 @@ export function handleInput(evt: TermEvent) {
           x: adjustedX,
           y: adjustedY,
           accelerationRatioY: 0.5,
+          hasPreciseScrollingDeltas: false,
+          canScroll: true,
+        });
+        break;
+      }
+
+      if (kind === 'scrollLeft' || kind === 'scrollRight') {
+        const now = Date.now();
+        const direction = kind === 'scrollLeft' ? -1 : 1;
+
+        // Reset accumulator if direction changed or after 1s of inactivity
+        if (Math.sign(horizontalScrollAccumulator) !== direction || now - lastScrollTime > 1000) {
+          horizontalScrollAccumulator = 0;
+        }
+
+        horizontalScrollAccumulator += direction;
+        lastScrollTime = now;
+
+        // Trigger navigation if threshold met and cooldown passed
+        if (
+          Math.abs(horizontalScrollAccumulator) >= NAVIGATION_THRESHOLD &&
+          now - lastNavigationTime > NAVIGATION_COOLDOWN
+        ) {
+          if (direction === -1) {
+            view.back();
+          } else {
+            view.forward();
+          }
+          lastNavigationTime = now;
+          horizontalScrollAccumulator = 0;
+        }
+
+        view.content.webContents.sendInputEvent({
+          type: 'mouseWheel',
+          wheelTicksY: 0,
+          wheelTicksX: direction,
+          deltaX: direction * WHEEL_DELTA,
+          deltaY: 0,
+          modifiers,
+          x: adjustedX,
+          y: adjustedY,
+          accelerationRatioX: 0.5,
           hasPreciseScrollingDeltas: false,
           canScroll: true,
         });
