@@ -21,6 +21,7 @@ type PaintedContent = {
     width: number;
     height: number;
   };
+  refresh(): void;
   destroy(): void;
 };
 
@@ -37,12 +38,23 @@ export function registerPaintedContent(
 
 
 
+  let lastImageSize: { width: number, height: number } | undefined;
+
   if (!features.current) {
     console_.error('No features available');
     abort();
   }
 
   const result: PaintedContent = {
+    refresh() {
+      if (result.buffer && lastImageSize) {
+        setModes([Mode.pendingUpdate], true);
+        containerFrame
+          .loadFrame(frameNumber, result.buffer, lastImageSize)
+          .composite(layoutNode.deviceLayout);
+        setModes([Mode.pendingUpdate], false);
+      }
+    },
     destroy() {
       contents.off('paint', paint);
       this.buffer = undefined;
@@ -76,8 +88,9 @@ export function registerPaintedContent(
     }
 
     const buffer = image.toBitmap();
-    result.buffer.write(buffer, imageSize.width);
+    result.buffer.write(buffer, imageSize.width * 4);
     setModes([Mode.pendingUpdate], true);
+    lastImageSize = imageSize;
     containerFrame
       .loadFrame(frameNumber, result.buffer, imageSize)
       .composite(layoutNode.deviceLayout);
@@ -105,6 +118,9 @@ export function registerPaintedContentFallback(
   let paintedImage: PaintedImage | undefined;
 
   const result: PaintedContent = {
+    refresh() {
+      // Refresh logic for fallback mode if needed
+    },
     destroy() {
       contents.off('paint', paint);
       this.buffer = undefined;
@@ -135,7 +151,7 @@ export function registerPaintedContentFallback(
       replace = false;
       const buffer = new ShmGraphicBuffer(imageBufferSize);
       paintedImage?.free();
-      buffer.write(image.toBitmap(), imageSize.width);
+      buffer.write(image.toBitmap(), imageSize.width * 4);
       setModes([Mode.pendingUpdate], true);
       paintedImage = paintImage(buffer, imageSize, position);
       setModes([Mode.pendingUpdate], false);

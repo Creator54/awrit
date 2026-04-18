@@ -38,7 +38,7 @@ export function handleInput(evt: TermEvent) {
         return;
       }
 
-      const webContents = view.focusedContent;
+      const webContents = view.omniboxVisible ? view.toolbar.webContents : view.focusedContent;
       const { code: keyCode, modifiers, down, isCharEvent } = evt.keyEvent as KeyEvent;
 
       if (isCharEvent && down) {
@@ -91,8 +91,8 @@ export function handleInput(evt: TermEvent) {
       const dpr = layoutContainer.devicePixelRatio;
 
       // Determine if click is in toolbar or content area
-      // Mouse coords from Kitty (SGR-pixel mode) are in terminal pixels = device pixels
-      const isInToolbar = rawY < contentNode.deviceLayout.y;
+      // If omnibox is visible, it takes precedence as an overlay
+      const isInToolbar = view.omniboxVisible || rawY < contentNode.deviceLayout.y;
 
       // Pick target webContents and compute coordinates relative to it
       const targetNode = isInToolbar ? toolbarNode : contentNode;

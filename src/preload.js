@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('ipc', {
     ipcRenderer.on('content:navigation-state-changed', (_event, state) => callback(state)),
   onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', callback),
   onToggleUrlBar: (callback) => ipcRenderer.on('toolbar:toggle-url-bar', callback),
-  onSetUrlBarVisible: (callback) => ipcRenderer.on('toolbar:set-url-bar-visible', (_event, visible) => callback(visible)),
+  onSetUrlBarVisible: (callback) => ipcRenderer.on('omnibox:set-visible', (_event, visible) => callback(visible)),
+  toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
 });

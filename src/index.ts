@@ -1,4 +1,16 @@
 import * as out from './tty/output';
+import fs from 'node:fs';
+import path from 'node:path';
+import { options } from './args';
+
+// Only redirect console logs, NOT process.stdout/stderr (which are needed for graphics)
+if (!options.dev) {
+  const logFile = path.join(process.cwd(), 'awrit_startup.log');
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+  console.log = (...args) => logStream.write(args.join(' ') + '\n');
+  console.error = (...args) => logStream.write(args.join(' ') + '\n');
+}
+
 out.setup();
 
 import { app, dialog, ipcMain } from 'electron';
@@ -12,19 +24,12 @@ import {
 import { handleInput } from './inputHandler';
 import { createWindowWithToolbar, type WindowView } from './windows';
 import { console_ } from './console';
-import { options } from './args';
 import { features } from './features';
 import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
-import fs from 'node:fs';
-import path from 'node:path';
 
 let homepage = 'https://github.com/chase/awrit';
 
-// Set initial URL bar visibility based on CLI flag
-if (options['no-url-bar']) {
-  (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = false;
-}
 
 function loadConfig(config: typeof import('../config.js')) {
   if (config.homepage) homepage = config.homepage;
@@ -48,7 +53,7 @@ function loadConfig(config: typeof import('../config.js')) {
       }
     }
     // Add default system keybindings
-    bindings['<C-b>'] = ({ view }: { view?: WindowView }) => view?.toggleUrlBar();
+    bindings['<C-l>'] = ({ view }: { view?: WindowView }) => view?.toggleOmnibox();
 
     loadKeyBindings({ keybindings: bindings });
   }

@@ -1,31 +1,37 @@
 import {
+  app,
   BrowserWindow,
   type BrowserWindowConstructorOptions,
   type WebContents,
   ipcMain,
   screen,
 } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
+import {
+  calculateLayout,
+  layout,
+  px,
+  row,
+  auto,
+  type LayoutContainer,
+  type LayoutNode,
+  type Size,
+} from './layout';
 import { registerPaintedContent, registerPaintedContentFallback } from './paint';
+import { Mode, setModes } from './tty/output';
 import { sessionPromise } from './session';
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
 import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
 import { getWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
-
 export { getWindowSize };
 import { options } from './args';
 import { console_ } from './console';
 import { TOOLBAR_PORT } from './runner/ports';
-import {
-  layout,
-  row,
-  px,
-  auto,
-  calculateLayout,
-  type LayoutContainer,
-  type LayoutNode,
-} from './layout';
+
+// Log redirection handled in index.ts
+
 import { getDisplayScale } from './dpi';
 import { features } from './features';
 import { updateCursor } from './tty/cursor';
@@ -34,7 +40,7 @@ import { updateCursor } from './tty/cursor';
 export type Actions = {
   back: () => void;
   forward: () => void;
-  refresh: () => void;
+  reload: () => void;
 };
 
 export type WindowView = {
@@ -42,10 +48,13 @@ export type WindowView = {
   content: BrowserWindow;
   focusedContent: WebContents;
   layoutContainer: LayoutContainer;
+  toolbarLayoutContainer: LayoutContainer;
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
+  omniboxVisible: boolean;
+  refresh: () => void;
   relayout: (force?: boolean) => void;
-  toggleUrlBar: () => void;
+  toggleOmnibox: () => void;
 } & Actions;
 
 export const focusedView: {
@@ -58,7 +67,10 @@ export const focusedView: {
 
 export const windowViews = new WeakMap<BrowserWindow, WindowView>();
 
-const TOOLBAR_HEIGHT = 40;
+const OMNIBOX_WIDTH_PERCENT = 0.7;
+const OMNIBOX_HEIGHT_PERCENT = 0.4;
+const OMNIBOX_MIN_WIDTH = 400;
+const OMNIBOX_MIN_HEIGHT = 100;
 
 /**
  * NOTE: the happens before load but after frame navigate
@@ -73,9 +85,10 @@ function resetForFrameQuirk(webContents: WebContents) {
   });
 }
 
-type Size = { width: number; height: number };
+export type WindowDimensions = { width: number; height: number };
+
 // this deals with the DPI scale rounding error causing the buffer to be too small
-function padSize(size: Size): Size {
+function padSize(size: WindowDimensions): WindowDimensions {
   return {
     width: size.width + 3,
     height: size.height + 3,
@@ -101,25 +114,35 @@ export async function createWindowWithToolbar(
     getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
   );
 
-  // Check initial URL bar visibility (from CLI or config)
-  // @ts-ignore - global variable can be set in index.ts or config
-  const initialUrlBarVisible = 
-    options['no-url-bar'] === true || 
-    (options as any)['hide-url-bar'] === true 
-      ? false : (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ !== false;
+  const toolbarLayoutContainer = layout(
+    size.width,
+    size.height,
+    getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
+  );
 
-  // Expose URL bar visibility to toolbar renderer
-  // @ts-ignore
-  (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = initialUrlBarVisible;
+  // Omnibox starts hidden by default now
+  let omniboxVisible = false;
 
-  // Create layout nodes for toolbar and content
-  const toolbarNode = row({ height: px(initialUrlBarVisible ? TOOLBAR_HEIGHT : 0), tag: 'toolbar' });
-  const contentNode = row({ height: auto(), tag: 'content' });
+  // Create layout nodes with explicit initial sizes to prevent 0x0 bugs
+  const toolbarNode = row({ 
+    width: px(size.width), 
+    height: px(size.height), 
+    tag: 'omnibox' 
+  });
+  const contentNode = row({ 
+    width: px(size.width), 
+    height: px(size.height), 
+    tag: 'content' 
+  });
 
   const hasAnimation = features.current?.loadFrame && features.current.compositeFrame;
 
-  // Calculate layout
-  calculateLayout(layoutContainer, [toolbarNode, contentNode]);
+  // Calculate layouts in separate containers so they overlap instead of splitting the screen
+  calculateLayout(layoutContainer, [contentNode]);
+  calculateLayout(toolbarLayoutContainer, [toolbarNode]);
+
+  // Explicitly clear the terminal to hide build logs before first paint
+  out.clearScreen();
 
   const transparentWindowSettings = {
     transparent: true,
@@ -158,6 +181,7 @@ export async function createWindowWithToolbar(
     ...sharedConstructorOptions,
     ...contentNode.computedLayout,
 
+    transparent: !!options.transparent,
     ...(options.transparent ? transparentWindowSettings : {}),
 
     webPreferences: {
@@ -170,29 +194,50 @@ export async function createWindowWithToolbar(
       contextIsolation: true,
       disableDialogs: true,
     },
+    backgroundColor: '#000000', // Solid black background for content to hide terminal logs
   });
 
   const destructors: Array<() => void> = [];
+  const refreshers: Array<() => void> = [];
 
-  function registerPaints(size: Size) {
+  function registerPaints(size: WindowDimensions) {
+    destructors.forEach((d) => d());
+    destructors.length = 0;
+    refreshers.length = 0;
+
     if (hasAnimation) {
-      const containerBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
-      
+      // Content layer (z=0)
+      const contentBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
       const opaqueBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 255]));
-      containerBuffer.write(opaqueBlack, size.width);
-
+      contentBuffer.write(opaqueBlack, size.width * 4);
       out.placeCursor({ x: 0, y: 0 });
-      const containerFrame = paintInitialFrame(containerBuffer, size);
+      const contentFrame = paintInitialFrame(contentBuffer, size, { z: 0 });
+      const cRef = registerPaintedContent(contentFrame, content, contentNode);
+
+      // Toolbar layer (z=1)
+      const toolbarBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
+      const transparentBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 0]));
+      toolbarBuffer.write(transparentBlack, size.width * 4);
+      out.placeCursor({ x: 0, y: 0 });
+      const toolbarFrame = paintInitialFrame(toolbarBuffer, size, { z: 1 });
+      const tRef = registerPaintedContent(toolbarFrame, toolbar, toolbarNode);
+
       destructors.push(
-        containerFrame.free,
-        registerPaintedContent(containerFrame, toolbar, toolbarNode).destroy,
-        registerPaintedContent(containerFrame, content, contentNode).destroy,
+        contentFrame.free,
+        toolbarFrame.free,
+        cRef.destroy,
+        tRef.destroy,
       );
+
+      refreshers.push(cRef.refresh, tRef.refresh);
     } else {
+      const tRef = registerPaintedContentFallback(toolbar, toolbarNode);
+      const cRef = registerPaintedContentFallback(content, contentNode);
       destructors.push(
-        registerPaintedContentFallback(toolbar, toolbarNode).destroy,
-        registerPaintedContentFallback(content, contentNode).destroy,
+        tRef.destroy,
+        cRef.destroy,
       );
+      refreshers.push(tRef.refresh, cRef.refresh);
     }
   }
 
@@ -238,6 +283,21 @@ export async function createWindowWithToolbar(
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
+  // @ts-ignore - monkey patch for focus management
+  toolbar.focusOnWebView = () => {
+    focusedView.current = view;
+    view.focusedContent = toolbar.webContents;
+  };
+  // @ts-ignore
+  content.focusOnWebView = () => {
+    focusedView.current = view;
+    view.focusedContent = content.webContents;
+  };
+  // @ts-ignore
+  toolbar.blurWebView = () => {};
+  // @ts-ignore
+  content.blurWebView = () => {};
+
   let relayoutScheduled = false;
   let lastWidth = size.width;
   let lastHeight = size.height;
@@ -247,8 +307,13 @@ export async function createWindowWithToolbar(
     content,
     focusedContent: content.webContents,
     layoutContainer,
+    toolbarLayoutContainer,
     toolbarNode,
     contentNode,
+    omniboxVisible,
+    refresh() {
+      refreshers.forEach((r) => r());
+    },
     relayout(force = false) {
       // Coalesce multiple resize events into a single relayout on next tick
       if (relayoutScheduled) return;
@@ -265,8 +330,6 @@ export async function createWindowWithToolbar(
         lastHeight = newSize.height;
 
         // Capture old paint handlers to tear them down after new ones are placed.
-        // This prevents the terminal background (logs) from becoming visible 
-        // during the transition.
         const oldDestructors = [...destructors];
         destructors.length = 0;
 
@@ -279,33 +342,40 @@ export async function createWindowWithToolbar(
         }
 
         // Force Electron to schedule a full repaint at the new size.
-        // Without this, the offscreen renderer won't produce a frame
-        // until something else triggers a content change (e.g. scroll).
         toolbar.webContents.invalidate();
         content.webContents.invalidate();
 
-        // Focus and a small delay before another invalidate can help 
-        // wake up the renderer if it got stuck during the transition.
-        view.content.focusOnWebView();
+        if (this.omniboxVisible) {
+          view.toolbar.focusOnWebView();
+        } else {
+          view.content.focusOnWebView();
+        }
 
-        // Second invalidate after a small delay to ensure the renderer 
-        // has processed the bounds change and is ready to produce a frame.
-        setTimeout(() => {
-          content.webContents.invalidate();
-        }, 50);
       });
     },
-    toggleUrlBar() {
-      const isVisible = view.toolbarNode.height.value !== 0;
-      const newHeight = isVisible ? 0 : TOOLBAR_HEIGHT;
-      view.toolbarNode.height.value = newHeight;
+    toggleOmnibox() {
+      this.omniboxVisible = !this.omniboxVisible;
+      console.log(`[Omnibox] Toggling visibility: ${this.omniboxVisible}`);
+      
+      // Send signal to frontend - retry if not loaded yet
+      const sendSignal = () => {
+        if (!this.toolbar.webContents.isLoading()) {
+          this.toolbar.webContents.send('omnibox:set-visible', this.omniboxVisible);
+        }
+      };
+      
+      sendSignal();
+      // Also send after a short delay just in case
+      setTimeout(sendSignal, 100);
+      
+      // Toggle mouse ignorance
+      this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible);
 
-      // Expose state to renderer
-      // @ts-ignore
-      (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = !isVisible;
-      view.toolbar.webContents.send('toolbar:set-url-bar-visible', !isVisible);
-
-      view.relayout(true);
+      if (this.omniboxVisible) {
+        this.toolbar.focus();
+      } else {
+        this.content.focus();
+      }
     },
     back: () => {
       content.webContents.goBack();
@@ -313,7 +383,7 @@ export async function createWindowWithToolbar(
     forward: () => {
       content.webContents.goForward();
     },
-    refresh: () => {
+    reload: () => {
       content.webContents.reload();
     },
   };
@@ -325,27 +395,28 @@ export async function createWindowWithToolbar(
   // Set up IPC for toolbar interactions
   setupToolbarIPC(toolbar.webContents, content.webContents, view);
 
-  // Send initial URL bar visibility state to toolbar
+  // Initial state is hidden
   toolbar.webContents.once('did-finish-load', () => {
-    toolbar.webContents.send('toolbar:set-url-bar-visible', initialUrlBarVisible);
+    toolbar.webContents.send('omnibox:set-visible', false);
   });
 
   return view;
 }
 
-function updateViewSizes(view: WindowView, { width, height }: Size) {
-  const { toolbar, content, toolbarNode, contentNode } = view;
-  view.layoutContainer = layout(
-    width,
-    height,
-    getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
-  );
+function updateViewSizes(view: WindowView, { width, height }: WindowDimensions) {
+  const { toolbar, content, toolbarNode, contentNode, omniboxVisible } = view;
+  const dpr = getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor;
+  // Update containers with new size
+  view.layoutContainer = layout(width, height, dpr);
+  view.toolbarLayoutContainer = layout(width, height, dpr);
 
-  calculateLayout(view.layoutContainer, [toolbarNode, contentNode]);
+  // Re-calculate layouts for both independent full-screen layers
+  calculateLayout(view.layoutContainer, [contentNode]);
+  calculateLayout(view.toolbarLayoutContainer, [toolbarNode]);
 
-  // Update window sizes based on layout
-  toolbar.setContentSize(toolbarNode.computedLayout.width, toolbarNode.computedLayout.height);
-  content.setContentSize(contentNode.computedLayout.width, contentNode.computedLayout.height);
+  // Update Electron window sizes
+  toolbar.setContentSize(width, height);
+  content.setContentSize(width, height);
 }
 
 function setupToolbarIPC(
@@ -353,6 +424,7 @@ function setupToolbarIPC(
   contentContents: Electron.WebContents,
   view: WindowView,
 ) {
+
   ipcMain.on('toolbar:navigate-back', () => {
     if (contentContents.navigationHistory.canGoBack()) {
       contentContents.navigationHistory.goBack();
@@ -374,7 +446,20 @@ function setupToolbarIPC(
   });
 
   ipcMain.on('toolbar:toggle-url-bar', () => {
-    view.toggleUrlBar();
+    view.toggleOmnibox();
+  });
+
+  ipcMain.on('toolbar:close', () => {
+    if (view.omniboxVisible) {
+      view.toggleOmnibox();
+    }
+  });
+
+  // Global escape fallback
+  ipcMain.on('omnibox:escape', () => {
+    if (view.omniboxVisible) {
+      view.toggleOmnibox();
+    }
   });
 
   contentContents.on('did-start-loading', () => {

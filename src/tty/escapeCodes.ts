@@ -1,5 +1,8 @@
 type StringLike = string | { toString(): string };
 export const ESC_CODE = '\x1B';
+export const CLEAR_SCROLLBACK = CSI`3J`;
+export const GFX_BLACK_FILL = GFX`f=32,s=1,v=1,B=1;OK`;
+export const OPAQUE_WINDOW = CSI`?1049h`;
 export function ESC(strings: TemplateStringsArray, ...args: StringLike[]) {
   let ret = ESC_CODE;
   for (let n = 0; n < strings.length; n++) {
@@ -58,5 +61,5 @@ export const RESTORE_PRIVATE_MODE_VALUES = CSI`?r`;
 export const SAVE_COLORS = CSI`#P`;
 export const RESTORE_COLORS = CSI`#Q`;
 export const DECSACE_DEFAULT_REGION_SELECT = CSI`*x`;
-export const CLEAR_SCREEN = CSI`H` + CSI`2J`;
+export const CLEAR_SCREEN = CSI`H` + CSI`2J` + CSI`3J`;
 export const RESET_IRM = CSI`4l`;

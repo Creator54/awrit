@@ -1,4 +1,4 @@
-import { type ComponentProps, createSignal, Show, splitProps } from 'solid-js';
+import { type ComponentProps, createSignal, Show, onMount, onCleanup } from 'solid-js';
 
 export interface NavigationState {
   canGoBack: boolean;
@@ -19,6 +19,7 @@ export interface BrowserToolbar {
   onToggleFind: (callback: () => void) => void;
   onToggleUrlBar: (callback: () => void) => void;
   onSetUrlBarVisible: (callback: (visible: boolean) => void) => void;
+  toggleUrlBar: () => void;
 }
 
 declare global {
@@ -27,180 +28,188 @@ declare global {
   }
 }
 
-function Button(props: ComponentProps<'button'>) {
-  const [local, others] = splitProps(props, ['class']);
-  return (
-    <button
-      {...others}
-      class={`size-6 focus:outline-1 focus:outline-kitty-fg/50 text-lg rounded leading-none hover:bg-kitty-fg/10 disabled:text-kitty-fg/50 disabled:hover:bg-transparent text-kitty-fg ${local.class}`}
-    />
-  );
-}
-
-function Checkbox(props: ComponentProps<'button'> & { checked: boolean }) {
-  const [local, others] = splitProps(props, ['class', 'checked']);
-  return (
-    <button
-      {...others}
-      class={`size-6 focus:outline-1 focus:outline-kitty-fg/50 text-lg rounded leading-none hover:bg-kitty-fg/10 text-kitty-fg ${local.class}`}
-    >
-      {local.checked ? '☒' : '☐'}
-    </button>
-  );
-}
-
 export function Toolbar() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [url, setUrl] = createSignal('');
-  const [isFindMode, setIsFindMode] = createSignal(false);
-  const [urlBarVisible, setUrlBarVisible] = createSignal(true);
+  const [omniboxVisible, setOmniboxVisible] = createSignal(false);
   const [navigationState, setNavigationState] = createSignal<NavigationState>({
     canGoBack: false,
     canGoForward: false,
   });
-  const [matchCase, setMatchCase] = createSignal(false);
 
   let inputRef: HTMLInputElement | undefined;
-  let findInputRef: HTMLInputElement | undefined;
 
   window.ipc.onLoadingStarted(() => setIsLoading(true));
   window.ipc.onLoadingStopped(() => setIsLoading(false));
   window.ipc.onUrlChanged((newUrl: string) => setUrl(newUrl));
   window.ipc.onNavigationStateChanged((state: NavigationState) => setNavigationState(state));
-  window.ipc.onToggleFind(() => {
-    if (!isFindMode()) {
-      setIsFindMode(true);
-      // Focus the find input on next tick
-      setTimeout(() => findInputRef?.focus(), 0);
-    } else {
-      setIsFindMode(false);
-      window.ipc.stopFindInPage();
-    }
-  });
-  window.ipc.onToggleUrlBar(() => {
-    setUrlBarVisible((prev) => !prev);
-  });
+  
   window.ipc.onSetUrlBarVisible((visible: boolean) => {
-    setUrlBarVisible(visible);
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      setIsFindMode(false);
-      window.ipc.stopFindInPage();
+    console.log('[Toolbar] Visibility received:', visible);
+    setOmniboxVisible(visible);
+    if (visible) {
+      setTimeout(() => {
+        inputRef?.focus();
+        inputRef?.select();
+      }, 50);
     }
   });
 
   const handleUrlSubmit = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       let targetUrl = (e.currentTarget as HTMLInputElement).value.trim();
+      if (!targetUrl) return;
 
-      // Add https:// if no protocol is specified
-      if (!/^https?:\/\//i.test(targetUrl)) {
+      // Simple URL vs Search detection
+      const isUrl = /^https?:\/\//i.test(targetUrl) || 
+                  (targetUrl.includes('.') && !targetUrl.includes(' ')) || 
+                  targetUrl.startsWith('localhost:');
+
+      if (!isUrl) {
+        targetUrl = 'https://www.google.com/search?q=' + encodeURIComponent(targetUrl);
+      } else if (!/^https?:\/\//i.test(targetUrl)) {
         targetUrl = 'https://' + targetUrl;
       }
 
       window.ipc.navigateTo(targetUrl);
+      window.ipc.toggleUrlBar();
     }
   };
 
-  const handleInputClick = (e: MouseEvent) => {
-    const input = e.currentTarget as HTMLInputElement;
-    if (document.activeElement !== input || input.selectionStart === input.selectionEnd) {
-      input.select();
+  const handleBack = () => {
+    window.ipc.navigateBack();
+    window.ipc.toggleUrlBar();
+  };
+
+  const handleForward = () => {
+    window.ipc.navigateForward();
+    window.ipc.toggleUrlBar();
+  };
+
+  const handleRefresh = () => {
+    window.ipc.refresh();
+    window.ipc.toggleUrlBar();
+  };
+
+  onMount(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && omniboxVisible()) {
+        window.ipc.toggleUrlBar();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+    onCleanup(() => window.removeEventListener('keydown', handleGlobalKey));
+  });
+
+  // Close when clicking backdrop
+  const handleBackdropClick = (e: MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      window.ipc.toggleUrlBar();
     }
-  };
-
-  const handleFind = () => {
-    if (!findInputRef) return;
-    const text = findInputRef.value;
-    window.ipc.findInPage(text, { forward: true, matchCase: matchCase() });
-  };
-
-  const handleFindSubmit = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      const text = (e.currentTarget as HTMLInputElement).value;
-      window.ipc.findInPage(text, { forward: !e.shiftKey, matchCase: matchCase() });
-    } else if (e.key === 'Escape') {
-      setIsFindMode(false);
-      window.ipc.stopFindInPage();
-    }
-  };
-
-  const handleFindNav = (forward: boolean) => {
-    if (!findInputRef) return;
-    const text = findInputRef.value;
-    window.ipc.findInPage(text, { forward, matchCase: matchCase() });
   };
 
   return (
-    <div class={`h-screen flex items-center border-active-border text-kitty-fg ${urlBarVisible() ? 'bg-kitty-bg border-b-2 border-kitty-fg/20' : 'bg-transparent'}`}>
-      <Show when={urlBarVisible()}>
-      <div class="flex items-center w-full h-full px-1 box-border">
-        <Show when={isFindMode()}>
-          <div class="flex gap-1 mx-1">
-            <Button title="Previous" onClick={() => handleFindNav(false)} class="text-xl pb-[1px]">
-              ⯅
-            </Button>
-            <Button title="Next" onClick={() => handleFindNav(true)} class="text-xl pt-[1px]">
-              ⯆
-            </Button>
-          </div>
-          <input
-            ref={findInputRef}
-            type="text"
-            spellcheck="false"
-            placeholder="Find in page..."
-            onKeyDown={handleFindSubmit}
-            onInput={handleFind}
-            class="grow h-6 ml-2 px-1 text-sm border rounded-xs border-kitty-fg/50 focus:border-kitty-fg selection:bg-selection-background selection:text-selection-foreground focus:outline-none bg-kitty-fg/10"
-          />
-          <label class="flex items-center text-sm ml-2">
-            <Checkbox
-              checked={matchCase()}
-              onClick={() => setMatchCase((prev) => !prev)}
-              title="Match case"
-            />
-            <span class="ml-1 pb-0.25">Match case</span>
-          </label>
-        </Show>
-        <Show when={!isFindMode()}>
-            <div class="flex gap-1 mx-1">
-              <Button
-                title="Back"
-                disabled={!navigationState().canGoBack}
-                onClick={() => window.ipc.navigateBack()}
-                class="text-xl pb-[1px]"
-              >
-                ←
-              </Button>
-              <Button
-                title="Forward"
-                disabled={!navigationState().canGoForward}
-                onClick={() => window.ipc.navigateForward()}
-                class="text-xl pb-[1px]"
-              >
-                →
-              </Button>
-              <Button title={isLoading() ? 'Stop' : 'Refresh'} onClick={() => window.ipc.refresh()}>
-                {isLoading() ? '✕' : '↻'}
-              </Button>
+    <Show when={omniboxVisible()}>
+      <div 
+        class="h-screen w-screen flex items-start justify-center pt-[15vh] bg-black/80 backdrop-blur-md transition-all duration-300 animate-in fade-in"
+        onClick={handleBackdropClick}
+      >
+        <div 
+          class="w-[750px] max-w-[90vw] bg-kitty-bg border-2 border-kitty-fg/20 rounded-[2rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)] overflow-hidden scale-in transition-transform duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header / Input Area */}
+          <div class="flex items-center gap-5 p-6 bg-kitty-fg/5">
+            <div class="text-4xl text-kitty-fg/40 animate-pulse">
+               {isLoading() ? '⚡' : '🔍'}
             </div>
             <input
               ref={inputRef}
               type="text"
-              placeholder="Enter URL"
+              placeholder="Search or enter URL..."
               value={url()}
               spellcheck="false"
-              onClick={handleInputClick}
               onKeyDown={handleUrlSubmit}
-              class={`flex-1 h-6 px-1 text-sm border rounded-xs border-kitty-fg/50 focus:border-kitty-fg selection:bg-selection-background selection:text-selection-foreground focus:outline-none ${
-                isLoading() ? 'bg-kitty-fg/10 border-kitty-fg/50 text-kitty-fg/50' : 'bg-kitty-fg/10'
-              }`}
+              class="w-full text-3xl font-light bg-transparent border-none outline-none text-kitty-fg placeholder:text-kitty-fg/20 selection:bg-selection-background selection:text-selection-foreground"
             />
-        </Show>
+          </div>
+          
+          {/* Main Content / Suggestions */}
+          <div class="border-t border-kitty-fg/10 p-4 max-h-[450px] overflow-y-auto custom-scrollbar">
+             <div class="text-[10px] font-black text-kitty-fg/30 px-4 py-3 uppercase tracking-[0.2em]">Suggestions</div>
+             
+             <div class="flex flex-col gap-2">
+                <SuggestionItem 
+                  icon="🏠" 
+                  title="Homepage" 
+                  subtitle="Go back to your start page" 
+                  onClick={() => {
+                    window.ipc.navigateTo('https://github.com/chase/awrit');
+                    window.ipc.toggleUrlBar();
+                  }} 
+                />
+                
+                <Show when={url()}>
+                  <SuggestionItem 
+                    icon="🌐" 
+                    title={`Go to ${url()}`} 
+                    subtitle="Navigate to this address"
+                    onClick={() => {
+                      handleUrlSubmit({ key: 'Enter', currentTarget: { value: url() } } as any);
+                    }}
+                  />
+                  <SuggestionItem 
+                    icon="🔎" 
+                    title={`Search for "${url()}"`} 
+                    subtitle="Search on Google"
+                    onClick={() => {
+                      window.ipc.navigateTo(`https://www.google.com/search?q=${encodeURIComponent(url())}`);
+                      window.ipc.toggleUrlBar();
+                    }}
+                  />
+                </Show>
+             </div>
+          </div>
+          
+          {/* Footer / Shortcut Help */}
+          <div class="bg-kitty-fg/5 px-6 py-3 flex justify-between items-center border-t border-kitty-fg/10">
+             <div class="flex gap-6 text-[10px] font-bold text-kitty-fg/20 uppercase tracking-widest">
+                <div class="flex items-center gap-1.5">
+                   <kbd class="bg-kitty-fg/10 px-1.5 py-0.5 rounded border border-kitty-fg/20">⏎</kbd>
+                   <span>Navigate</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                   <kbd class="bg-kitty-fg/10 px-1.5 py-0.5 rounded border border-kitty-fg/20">ESC</kbd>
+                   <span>Close</span>
+                </div>
+             </div>
+             
+             <div class="flex items-center gap-3 opacity-30 grayscale hover:grayscale-0 hover:opacity-100 transition-all cursor-default">
+                <span class="text-[10px] font-black uppercase tracking-widest text-kitty-fg">awrit omnibox</span>
+             </div>
+          </div>
+        </div>
       </div>
-      </Show>
+    </Show>
+  );
+}
+
+function SuggestionItem(props: { icon: string; title: string; subtitle: string; onClick: () => void }) {
+  return (
+    <div 
+      class="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-kitty-fg/10 cursor-pointer group transition-all duration-200 active:scale-[0.98]"
+      onClick={props.onClick}
+    >
+       <div class="text-2xl w-12 h-12 flex items-center justify-center bg-kitty-fg/5 rounded-xl group-hover:bg-kitty-fg/10 transition-colors">
+          <span class="group-hover:scale-110 transition-transform">{props.icon}</span>
+       </div>
+       <div class="flex flex-col">
+          <span class="text-base font-semibold text-kitty-fg group-hover:text-kitty-fg/90 transition-colors">{props.title}</span>
+          <span class="text-xs text-kitty-fg/40 group-hover:text-kitty-fg/60 transition-colors">{props.subtitle}</span>
+       </div>
+       <div class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-kitty-fg/30 text-xs font-bold uppercase tracking-widest">
+          Select
+       </div>
     </div>
   );
 }

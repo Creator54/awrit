@@ -3,7 +3,7 @@ import { sessionPromise } from './session';
 import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import path from 'node:path';
 
-const CHROME_WEB_STORE_EXTENSIONS = [
+const CHROME_WEB_STORE_EXTENSIONS: string[] = [
   // uBlock Origin Lite
   // 'ddkjiahejlhfcafbddmgiahcphecmpfh',
 ];

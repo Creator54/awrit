@@ -48,10 +48,11 @@ export interface InitialFrame {
   free: () => void;
 }
 
-export function paintInitialFrame(buffer: ShmGraphicBuffer, size: Size): InitialFrame {
+export function paintInitialFrame(buffer: ShmGraphicBuffer, size: Size, options?: { z?: number }): InitialFrame {
   const id = imageId();
+  const zStr = options?.z !== undefined ? `,z=${options.z}` : '';
   // paint and transfer first frame
-  paintBitmap(buffer.nameBase64, size, `i=${id}`);
+  paintBitmap(buffer.nameBase64, size, `i=${id}${zStr}`);
   // pause at the first frame
   stdout.write(GFX`a=a,i=${id},c=1`);
 
@@ -130,7 +131,7 @@ export function paintImage(
     buffer,
     free: () => freeImage(id),
     replace: (buffer_) => {
-      buffer.write(buffer_, size.width);
+      buffer.write(buffer_, size.width * 4);
       // freeImage(id);
       placeCursor({ x: position.x.cell, y: position.y.cell });
       paintBitmap(buffer.nameBase64, size, control);
