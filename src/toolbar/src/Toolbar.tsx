@@ -1,4 +1,4 @@
-import { type ComponentProps, createSignal, Show, onMount, onCleanup } from 'solid-js';
+import { type ComponentProps, createSignal, Show, onMount, onCleanup, For } from 'solid-js';
 
 export interface NavigationState {
   canGoBack: boolean;
@@ -28,10 +28,22 @@ declare global {
   }
 }
 
+interface HistoryItem {
+  title: string;
+  url: string;
+  isSearch: boolean;
+}
+
+interface Suggestion extends HistoryItem {
+  type: 'history' | 'action';
+}
+
 export function Toolbar() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [url, setUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
+  const [history, setHistory] = createSignal<HistoryItem[]>([]);
+  const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [navigationState, setNavigationState] = createSignal<NavigationState>({
     canGoBack: false,
     canGoForward: false,
@@ -48,6 +60,7 @@ export function Toolbar() {
     console.log('[Toolbar] Visibility received:', visible);
     setOmniboxVisible(visible);
     if (visible) {
+      setSelectedIndex(0);
       setTimeout(() => {
         inputRef?.focus();
         inputRef?.select();
@@ -55,25 +68,122 @@ export function Toolbar() {
     }
   });
 
-  const handleUrlSubmit = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      let targetUrl = (e.currentTarget as HTMLInputElement).value.trim();
-      if (!targetUrl) return;
+  const addToHistory = (title: string, url: string, isSearch: boolean) => {
+    setHistory(prev => {
+      const filtered = prev.filter(item => item.url !== url);
+      const newHistory = [{ title, url, isSearch }, ...filtered].slice(0, 50);
+      localStorage.setItem('awrit:history', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  };
 
-      // Simple URL vs Search detection
-      const isUrl = /^https?:\/\//i.test(targetUrl) || 
-                  (targetUrl.includes('.') && !targetUrl.includes(' ')) || 
-                  targetUrl.startsWith('localhost:');
+  const isLikelyUrl = (text: string) => {
+    return /^https?:\/\//i.test(text) || 
+           (text.includes('.') && !text.includes(' ')) || 
+           text.startsWith('localhost:');
+  };
 
-      if (!isUrl) {
-        targetUrl = 'https://www.google.com/search?q=' + encodeURIComponent(targetUrl);
-      } else if (!/^https?:\/\//i.test(targetUrl)) {
-        targetUrl = 'https://' + targetUrl;
+  const filteredHistory = () => {
+    const query = url().toLowerCase().trim();
+    if (!query) return history().slice(0, 10);
+    return history().filter(item => 
+      item.title.toLowerCase().includes(query) || 
+      item.url.toLowerCase().includes(query)
+    ).slice(0, 10);
+  };
+
+  const allSuggestions = () => {
+    const query = url().trim();
+    const suggestions: Suggestion[] = [];
+    
+    if (query) {
+      const isUrl = isLikelyUrl(query);
+      if (isUrl) {
+        suggestions.push({ 
+          title: query, 
+          url: 'Go to website', 
+          isSearch: false,
+          type: 'action'
+        });
+        suggestions.push({ 
+          title: query, 
+          url: 'Search with Google', 
+          isSearch: true,
+          type: 'action'
+        });
+      } else {
+        suggestions.push({ 
+          title: query, 
+          url: 'Search with Google', 
+          isSearch: true,
+          type: 'action'
+        });
+        suggestions.push({ 
+          title: query, 
+          url: 'Go to website', 
+          isSearch: false,
+          type: 'action'
+        });
       }
-
-      window.ipc.navigateTo(targetUrl);
-      window.ipc.toggleUrlBar();
     }
+
+    const filtered = filteredHistory();
+    const seenUrls = new Set(suggestions.map(s => s.title.toLowerCase()));
+    
+    for (const item of filtered) {
+       const urlPath = item.url.replace(/^https?:\/\//, '').toLowerCase();
+       if (!seenUrls.has(item.title.toLowerCase()) && !seenUrls.has(urlPath)) {
+         suggestions.push({ ...item, type: 'history' });
+         seenUrls.add(item.title.toLowerCase());
+       }
+    }
+
+    return suggestions.slice(0, 10);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const suggestions = allSuggestions();
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % Math.max(1, suggestions.length));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + suggestions.length) % Math.max(1, suggestions.length));
+    } else if (e.key === 'Enter') {
+      const selected = suggestions[selectedIndex()];
+      if (selected) {
+        executeSuggestion(selected);
+      } else if (url().trim()) {
+        // Fallback for when no selection is made but Enter is pressed
+        const query = url().trim();
+        const isUrl = isLikelyUrl(query);
+        const finalUrl = isUrl 
+          ? (query.startsWith('http') ? query : `https://${query}`)
+          : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        
+        addToHistory(query, finalUrl, !isUrl);
+        window.ipc.navigateTo(finalUrl);
+        window.ipc.toggleUrlBar();
+      }
+    }
+  };
+
+  const executeSuggestion = (selected: Suggestion) => {
+    if (selected.type === 'action') {
+       if (selected.isSearch) {
+          const finalUrl = `https://www.google.com/search?q=${encodeURIComponent(selected.title)}`;
+          addToHistory(selected.title, finalUrl, true);
+          window.ipc.navigateTo(finalUrl);
+       } else {
+          const finalUrl = selected.title.startsWith('http') ? selected.title : `https://${selected.title}`;
+          addToHistory(selected.title, finalUrl, false);
+          window.ipc.navigateTo(finalUrl);
+       }
+    } else {
+      window.ipc.navigateTo(selected.url);
+    }
+    window.ipc.toggleUrlBar();
   };
 
   const handleBack = () => {
@@ -92,6 +202,11 @@ export function Toolbar() {
   };
 
   onMount(() => {
+    try {
+      const stored = localStorage.getItem('awrit:history');
+      if (stored) setHistory(JSON.parse(stored));
+    } catch (e) {}
+
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && omniboxVisible()) {
         window.ipc.toggleUrlBar();
@@ -111,81 +226,52 @@ export function Toolbar() {
   return (
     <Show when={omniboxVisible()}>
       <div 
-        class="h-screen w-screen flex items-start justify-center pt-[15vh] bg-black/80 backdrop-blur-md transition-all duration-300 animate-in fade-in"
+        class="h-screen w-screen flex items-center justify-center pb-[20vh] bg-black/40 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
         onClick={handleBackdropClick}
       >
         <div 
-          class="w-[750px] max-w-[90vw] bg-kitty-bg border-2 border-kitty-fg/20 rounded-[2rem] shadow-[0_30px_60px_-12px_rgba(0,0,0,0.8)] overflow-hidden scale-in transition-transform duration-200"
+          class="w-[640px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header / Input Area */}
-          <div class="flex items-center gap-5 p-6 bg-kitty-fg/5">
-            <div class="text-4xl text-kitty-fg/40 animate-pulse">
-               {isLoading() ? '⚡' : '🔍'}
-            </div>
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+            <svg class="w-4 h-4 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
             <input
               ref={inputRef}
               type="text"
               placeholder="Search or enter URL..."
               value={url()}
               spellcheck="false"
-              onKeyDown={handleUrlSubmit}
-              class="w-full text-3xl font-light bg-transparent border-none outline-none text-kitty-fg placeholder:text-kitty-fg/20 selection:bg-selection-background selection:text-selection-foreground"
+              onInput={(e) => {
+                setUrl(e.currentTarget.value);
+                setSelectedIndex(0);
+              }}
+              onKeyDown={handleKeyDown}
+              class="w-full bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
             />
           </div>
           
           {/* Main Content / Suggestions */}
-          <div class="border-t border-kitty-fg/10 p-4 max-h-[450px] overflow-y-auto custom-scrollbar">
-             <div class="text-[10px] font-black text-kitty-fg/30 px-4 py-3 uppercase tracking-[0.2em]">Suggestions</div>
-             
-             <div class="flex flex-col gap-2">
-                <SuggestionItem 
-                  icon="🏠" 
-                  title="Homepage" 
-                  subtitle="Go back to your start page" 
-                  onClick={() => {
-                    window.ipc.navigateTo('https://github.com/chase/awrit');
-                    window.ipc.toggleUrlBar();
-                  }} 
-                />
-                
-                <Show when={url()}>
-                  <SuggestionItem 
-                    icon="🌐" 
-                    title={`Go to ${url()}`} 
-                    subtitle="Navigate to this address"
-                    onClick={() => {
-                      handleUrlSubmit({ key: 'Enter', currentTarget: { value: url() } } as any);
-                    }}
-                  />
-                  <SuggestionItem 
-                    icon="🔎" 
-                    title={`Search for "${url()}"`} 
-                    subtitle="Search on Google"
-                    onClick={() => {
-                      window.ipc.navigateTo(`https://www.google.com/search?q=${encodeURIComponent(url())}`);
-                      window.ipc.toggleUrlBar();
-                    }}
-                  />
-                </Show>
-             </div>
-          </div>
-          
-          {/* Footer / Shortcut Help */}
-          <div class="bg-kitty-fg/5 px-6 py-3 flex justify-between items-center border-t border-kitty-fg/10">
-             <div class="flex gap-6 text-[10px] font-bold text-kitty-fg/20 uppercase tracking-widest">
-                <div class="flex items-center gap-1.5">
-                   <kbd class="bg-kitty-fg/10 px-1.5 py-0.5 rounded border border-kitty-fg/20">⏎</kbd>
-                   <span>Navigate</span>
-                </div>
-                <div class="flex items-center gap-1.5">
-                   <kbd class="bg-kitty-fg/10 px-1.5 py-0.5 rounded border border-kitty-fg/20">ESC</kbd>
-                   <span>Close</span>
-                </div>
-             </div>
-             
-             <div class="flex items-center gap-3 opacity-30 grayscale hover:grayscale-0 hover:opacity-100 transition-all cursor-default">
-                <span class="text-[10px] font-black uppercase tracking-widest text-kitty-fg">awrit omnibox</span>
+          <div class="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
+             <div class="flex flex-col">
+                <For each={allSuggestions()}>
+                  {(item, index) => (
+                    <SuggestionItem 
+                      icon={
+                        item.isSearch 
+                          ? <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                          : <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                      }
+                      title={item.title} 
+                      url={item.type === 'action' ? item.url : item.url.replace(/^https?:\/\//, '')} 
+                      selected={selectedIndex() === index()}
+                      onClick={() => executeSuggestion(item)} 
+                    />
+                  )}
+                </For>
              </div>
           </div>
         </div>
@@ -194,21 +280,21 @@ export function Toolbar() {
   );
 }
 
-function SuggestionItem(props: { icon: string; title: string; subtitle: string; onClick: () => void }) {
+function SuggestionItem(props: { icon?: any; title: string; url: string; selected?: boolean; onClick: () => void }) {
   return (
     <div 
-      class="flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-kitty-fg/10 cursor-pointer group transition-all duration-200 active:scale-[0.98]"
+      class={`flex items-center gap-3 px-4 py-[6px] cursor-pointer transition-colors ${props.selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
       onClick={props.onClick}
     >
-       <div class="text-2xl w-12 h-12 flex items-center justify-center bg-kitty-fg/5 rounded-xl group-hover:bg-kitty-fg/10 transition-colors">
-          <span class="group-hover:scale-110 transition-transform">{props.icon}</span>
+       <div class="w-4 h-4 flex items-center justify-center flex-shrink-0">
+          {props.icon || (
+            <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          )}
        </div>
-       <div class="flex flex-col">
-          <span class="text-base font-semibold text-kitty-fg group-hover:text-kitty-fg/90 transition-colors">{props.title}</span>
-          <span class="text-xs text-kitty-fg/40 group-hover:text-kitty-fg/60 transition-colors">{props.subtitle}</span>
-       </div>
-       <div class="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-kitty-fg/30 text-xs font-bold uppercase tracking-widest">
-          Select
+       <div class="flex items-center gap-2 truncate text-[13px]">
+          <span class="text-white/90">{props.title}</span>
+          <span class="text-white/40">—</span>
+          <span class="text-white/50 truncate">{props.url}</span>
        </div>
     </div>
   );

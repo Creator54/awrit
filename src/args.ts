@@ -12,8 +12,6 @@ export const possibleOptions = {
   rebuild: { short: 'r', description: 'Rebuild the toolbar' },
 
   'window-size': { short: 'w', description: 'Window size as WIDTHxHEIGHT', string: true, arg: 'WIDTHxHEIGHT' },
-  'no-url-bar': { short: 'U', description: 'Start with the URL bar hidden' },
-  'hide-url-bar': { short: 'B', description: 'Start with the URL bar hidden' },
 } as const;
 
 export type Option = keyof typeof possibleOptions;
