@@ -10,18 +10,18 @@ let
     gdk-pixbuf
     at-spi2-core
     at-spi2-atk
-    xorg.libXcomposite
-    xorg.libXdamage
-    xorg.libXrandr
-    xorg.libX11
-    xorg.libXScrnSaver
-    xorg.libXtst
-    xorg.libXext
-    xorg.libxcb
-    xorg.libXi
-    xorg.libXfixes
-    xorg.libXrender
-    xorg.libXcursor
+    libxcomposite
+    libxdamage
+    libxrandr
+    libx11
+    libxscrnsaver
+    libxtst
+    libxext
+    libxcb
+    libxi
+    libxfixes
+    libxrender
+    libxcursor
     libxkbcommon
     nspr
     nss
@@ -60,8 +60,8 @@ pkgs.mkShell {
   LD_LIBRARY_PATH = libPath;
 
   shellHook = ''
-    echo " awrit dev environment ready"
-    echo " CDP available at: http://localhost:9222/json"
-    bun install 2>/dev/null || true
+    if [ ! -d "node_modules" ]; then
+      bun install 2>/dev/null || true
+    fi
   '';
 }
