@@ -154,7 +154,6 @@ function find({ view }) {
 
 /** @type {KeyBindingAction} */
 function copy({ view }) {
-  const { clipboard } = require('electron');
   view.focusedContent
     .executeJavaScript(`(() => {
       const activeEl = document.activeElement;
@@ -165,7 +164,15 @@ function copy({ view }) {
     })()`)
     .then((selectedText) => {
       if (selectedText) {
-        clipboard.writeText(selectedText);
+        const b64 = Buffer.from(selectedText).toString('base64');
+        process.stdout.write(`\x1b]52;c;${b64}\x1b\\`);
+        
+        try {
+          const { clipboard } = require('electron');
+          clipboard.writeText(selectedText);
+        } catch (e) {
+          // Ignore
+        }
       }
     })
     .catch((err) => {

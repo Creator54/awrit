@@ -70,6 +70,14 @@ export function handleInput(evt: TermEvent) {
       break;
     }
 
+    case 'paste': {
+      if (evt.paste) {
+        const webContents = view.omniboxVisible ? view.toolbar.webContents : view.focusedContent;
+        webContents.insertText(evt.paste);
+      }
+      break;
+    }
+
     case 'focus':
       break;
 

@@ -55,7 +55,7 @@ function loadConfig(config: typeof import('../config.js')) {
       }
     }
     // Add common keybindings that exist at top level
-    const topLevelKeys = ['<C-c>', '<Mouse4>', '<Mouse5>'];
+    const topLevelKeys = ['<Mouse4>', '<Mouse5>'];
     for (const key of topLevelKeys) {
       if ((config.keybindings as any)[key]) {
         bindings[key] = (config.keybindings as any)[key];
