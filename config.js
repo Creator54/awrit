@@ -152,6 +152,53 @@ function find({ view }) {
   view.focusedContent = view.toolbar.webContents;
 }
 
+const { execSync } = require('child_process');
+
+function writeToSystemClipboard(text) {
+  try {
+    if (process.platform === 'darwin') {
+      execSync('pbcopy', { input: text });
+    } else if (process.platform === 'linux') {
+      if (process.env.WAYLAND_DISPLAY) {
+        execSync('wl-copy', { input: text });
+      } else {
+        execSync('xclip -selection clipboard', { input: text });
+      }
+    } else if (process.platform === 'win32') {
+      execSync('clip', { input: text });
+    }
+  } catch (e) {
+    console.error('[Clipboard] Native copy failed:', e.message);
+    // Fallback to electron
+    try {
+      require('electron').clipboard.writeText(text);
+    } catch (err) {}
+  }
+}
+
+function readFromSystemClipboard() {
+  try {
+    if (process.platform === 'darwin') {
+      return execSync('pbpaste', { encoding: 'utf8' });
+    } else if (process.platform === 'linux') {
+      if (process.env.WAYLAND_DISPLAY) {
+        return execSync('wl-paste', { encoding: 'utf8' });
+      } else {
+        return execSync('xclip -selection clipboard -o', { encoding: 'utf8' });
+      }
+    } else if (process.platform === 'win32') {
+      return execSync('powershell Get-Clipboard', { encoding: 'utf8' });
+    }
+  } catch (e) {
+    console.error('[Clipboard] Native paste failed:', e.message);
+    // Fallback to electron
+    try {
+      return require('electron').clipboard.readText();
+    } catch (err) {}
+  }
+  return '';
+}
+
 /** @type {KeyBindingAction} */
 function copy({ view }) {
   view.focusedContent
@@ -164,15 +211,7 @@ function copy({ view }) {
     })()`)
     .then((selectedText) => {
       if (selectedText) {
-        const b64 = Buffer.from(selectedText).toString('base64');
-        process.stdout.write(`\x1b]52;c;${b64}\x1b\\`);
-        
-        try {
-          const { clipboard } = require('electron');
-          clipboard.writeText(selectedText);
-        } catch (e) {
-          // Ignore
-        }
+        writeToSystemClipboard(selectedText);
       }
     })
     .catch((err) => {
@@ -182,7 +221,10 @@ function copy({ view }) {
 
 /** @type {KeyBindingAction} */
 function paste({ view }) {
-  view.focusedContent.paste();
+  const text = readFromSystemClipboard();
+  if (text) {
+    view.focusedContent.insertText(text);
+  }
 }
 
 /** @type {KeyBindingAction} */
