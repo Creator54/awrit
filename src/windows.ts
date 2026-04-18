@@ -102,8 +102,11 @@ export async function createWindowWithToolbar(
   );
 
   // Check initial URL bar visibility (from CLI or config)
-  // @ts-ignore - global variable set in index.ts
-  const initialUrlBarVisible = (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ !== false;
+  // @ts-ignore - global variable can be set in index.ts or config
+  const initialUrlBarVisible = 
+    options['no-url-bar'] === true || 
+    (options as any)['hide-url-bar'] === true 
+      ? false : (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ !== false;
 
   // Expose URL bar visibility to toolbar renderer
   // @ts-ignore
@@ -356,12 +359,8 @@ function setupToolbarIPC(
     contentContents.loadURL(url);
   });
 
-  let urlBarHidden = (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ === false;
   ipcMain.on('toolbar:toggle-url-bar', () => {
-    urlBarHidden = !urlBarHidden;
-    toolbarContents.send('toolbar:toggle-url-bar');
-    view.toolbarNode.height = px(urlBarHidden ? 0 : TOOLBAR_HEIGHT);
-    view.relayout();
+    view.toggleUrlBar();
   });
 
   contentContents.on('did-start-loading', () => {

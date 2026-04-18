@@ -94,14 +94,7 @@ dialog.showErrorBox = (title, content) => {
 
 const INITIAL_URL = options.url || homepage;
 
-// Handle --toggle-url-bar CLI argument
-let urlBarVisible = true;
-if (options['toggle-url-bar'] === true) {
-  urlBarVisible = false;
-}
 
-// Export for use in windows.ts
-(globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = urlBarVisible;
 
 let exiting = false;
 let quitListening = () => {};
