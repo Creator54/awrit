@@ -19,6 +19,11 @@ import path from 'node:path';
 
 let homepage = 'https://github.com/chase/awrit';
 
+// Set initial URL bar visibility based on CLI flag
+if (options['no-url-bar']) {
+  (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = false;
+}
+
 function loadConfig(config: typeof import('../config.js')) {
   if (config.homepage) homepage = config.homepage;
   if (config.keybindings) {
