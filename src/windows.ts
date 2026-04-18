@@ -410,6 +410,12 @@ function updateViewSizes(view: WindowView, { width, height }: WindowDimensions) 
   view.layoutContainer = layout(width, height, dpr);
   view.toolbarLayoutContainer = layout(width, height, dpr);
 
+  // Update layout node dimensions to match the new window size
+  toolbarNode.width = px(width);
+  toolbarNode.height = px(height);
+  contentNode.width = px(width);
+  contentNode.height = px(height);
+
   // Re-calculate layouts for both independent full-screen layers
   calculateLayout(view.layoutContainer, [contentNode]);
   calculateLayout(view.toolbarLayoutContainer, [toolbarNode]);
