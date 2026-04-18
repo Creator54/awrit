@@ -1,7 +1,7 @@
 /** Homepage
  * The page that's displayed by default when no URL is provided
  **/
-const homepage = 'https://github.com/chase/awrit';
+const homepage = 'https://google.com';
 
 /** URL Bar Configuration
  * Controls the visibility and toggle behavior of the URL bar
