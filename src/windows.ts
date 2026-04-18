@@ -24,8 +24,16 @@ import { sessionPromise } from './session';
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
 import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
-import { getWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
-export { getWindowSize };
+import { getWindowSize as rawGetWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
+
+export function getWindowSize() {
+  try {
+    return rawGetWindowSize();
+  } catch (e) {
+    console_.error('Failed to get window size:', e);
+    return { width: 0, height: 0, cols: 0, rows: 0 };
+  }
+}
 import { options } from './args';
 import { console_ } from './console';
 import { TOOLBAR_PORT } from './runner/ports';
@@ -320,9 +328,18 @@ export async function createWindowWithToolbar(
       relayoutScheduled = true;
       setImmediate(() => {
         relayoutScheduled = false;
-        const newSize = getWindowSize();
+        let newSize;
+        try {
+          newSize = getWindowSize();
+        } catch (e) {
+          console_.error('Failed to get window size:', e);
+          return;
+        }
 
-        // Skip if the size hasn't actually changed and not forced
+        // Skip if the size hasn't actually changed, or if it's invalid (0x0)
+        if (newSize.width <= 0 || newSize.height <= 0) {
+          return;
+        }
         if (!force && newSize.width === lastWidth && newSize.height === lastHeight) {
           return;
         }
@@ -404,6 +421,8 @@ export async function createWindowWithToolbar(
 }
 
 function updateViewSizes(view: WindowView, { width, height }: WindowDimensions) {
+  if (width <= 0 || height <= 0) return;
+
   const { toolbar, content, toolbarNode, contentNode, omniboxVisible } = view;
   const dpr = getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor;
   // Update containers with new size
@@ -480,17 +499,27 @@ function setupToolbarIPC(
     toolbarContents.send('content:url-changed', url);
   });
 
-  contentContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
-    if (isMainFrame) {
-      toolbarContents.send('content:url-changed', url);
-    }
-  });
-
-  contentContents.on('did-navigate', () => {
+  const updateNavigationState = () => {
     const navigationState = {
       canGoBack: contentContents.navigationHistory.canGoBack(),
       canGoForward: contentContents.navigationHistory.canGoForward(),
     };
     toolbarContents.send('content:navigation-state-changed', navigationState);
+  };
+
+  contentContents.on('did-navigate', (event, url) => {
+    toolbarContents.send('content:url-changed', url);
+    updateNavigationState();
   });
+
+  contentContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+    if (isMainFrame) {
+      toolbarContents.send('content:url-changed', url);
+      updateNavigationState();
+    }
+  });
+
+  contentContents.on('did-start-navigation', updateNavigationState);
+  contentContents.on('did-finish-load', updateNavigationState);
+  contentContents.on('did-frame-finish-load', updateNavigationState);
 }

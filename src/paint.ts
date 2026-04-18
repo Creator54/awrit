@@ -1,5 +1,6 @@
-import { getWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
+import { ShmGraphicBuffer } from 'awrit-native-rs';
 import type { BrowserWindow, NativeImage, Rectangle } from 'electron';
+import { getWindowSize } from './windows';
 import { abort } from './abort';
 import { options } from './args';
 import { console_ } from './console';
@@ -45,9 +46,10 @@ export function registerPaintedContent(
     abort();
   }
 
+  let destroyed = false;
   const result: PaintedContent = {
     refresh() {
-      if (result.buffer && lastImageSize) {
+      if (!destroyed && result.buffer && lastImageSize) {
         setModes([Mode.pendingUpdate], true);
         containerFrame
           .loadFrame(frameNumber, result.buffer, lastImageSize)
@@ -56,6 +58,7 @@ export function registerPaintedContent(
       }
     },
     destroy() {
+      destroyed = true;
       contents.off('paint', paint);
       this.buffer = undefined;
       this.frame?.delete();
@@ -64,6 +67,7 @@ export function registerPaintedContent(
   };
 
   async function paint(_: any, _dirty: Rectangle, image: NativeImage) {
+    if (destroyed) return;
     const imageSize = image.getSize();
     if (imageSize.width === 0 || imageSize.height === 0) return;
 

@@ -235,10 +235,6 @@ export function Toolbar() {
         >
           {/* Header / Input Area */}
           <div class="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-            <svg class="w-4 h-4 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
             <input
               ref={inputRef}
               type="text"
@@ -250,8 +246,28 @@ export function Toolbar() {
                 setSelectedIndex(0);
               }}
               onKeyDown={handleKeyDown}
-              class="w-full bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
+              class="flex-1 bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
             />
+            
+            {/* Navigation Controls */}
+            <div class="flex items-center gap-0.5 ml-2 border-l border-white/10 pl-2">
+              <button 
+                onClick={handleBack} 
+                disabled={!navigationState().canGoBack} 
+                title="Back"
+                class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              </button>
+              <button 
+                onClick={handleForward} 
+                disabled={!navigationState().canGoForward} 
+                title="Forward"
+                class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
           </div>
           
           {/* Main Content / Suggestions */}

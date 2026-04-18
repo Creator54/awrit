@@ -19,10 +19,19 @@ import {
   listenForInput,
   type TermEvent,
   termDisableFeatures,
-  getWindowSize,
 } from 'awrit-native-rs';
+process.on('uncaughtException', (err) => {
+  const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
+  logStream.write(`UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}\n`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
+  logStream.write(`UNHANDLED REJECTION: ${reason}\n`);
+});
+
 import { handleInput } from './inputHandler';
-import { createWindowWithToolbar, type WindowView } from './windows';
+import { createWindowWithToolbar, getWindowSize, type WindowView } from './windows';
 import { console_ } from './console';
 import { features } from './features';
 import { clearPlacements } from './tty/kittyGraphics';
@@ -121,14 +130,6 @@ const cleanup = (signum = 1, reason?: string) => {
 };
 
 function inputHandler(evt: TermEvent) {
-  if (
-    evt.eventType === 'key' &&
-    evt.keyEvent.code === 'd' &&
-    evt.keyEvent.modifiers.includes('ctrl')
-  ) {
-    cleanup(0);
-  }
-
   // Graphics protocol events now come through graphics events
   if (options['debug-paint'] && evt.eventType === 'graphics') {
     console_.error('Graphics protocol: ', evt.graphics);
