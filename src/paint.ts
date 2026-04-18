@@ -53,6 +53,7 @@ export function registerPaintedContent(
 
   async function paint(_: any, _dirty: Rectangle, image: NativeImage) {
     const imageSize = image.getSize();
+    if (imageSize.width === 0 || imageSize.height === 0) return;
 
     const imageBufferSize = imageSize.width * imageSize.height * 4;
     if (result.buffer == null) {
@@ -114,10 +115,13 @@ export function registerPaintedContentFallback(
 
   async function paint(_: any, _dirty: Rectangle, image: NativeImage) {
     const imageSize = image.getSize();
+    if (imageSize.width === 0 || imageSize.height === 0) return;
+
     const imageBufferSize = imageSize.width * imageSize.height * 4;
 
     // Recompute cell metrics on every paint so they stay correct after resize
     const termSize = getWindowSize();
+    if (termSize.cols === 0 || termSize.rows === 0) return;
     const cellToPxX = termSize.width / termSize.cols;
     const cellToPxY = termSize.height / termSize.rows;
 

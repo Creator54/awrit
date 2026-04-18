@@ -178,11 +178,7 @@ export async function createWindowWithToolbar(
     if (hasAnimation) {
       const containerBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
       
-      // Fill with opaque black immediately to cover terminal logs
-      const opaqueBlack = Buffer.alloc(size.width * size.height * 4);
-      for (let i = 0; i < opaqueBlack.length; i += 4) {
-        opaqueBlack[i + 3] = 255; // Opaque alpha
-      }
+      const opaqueBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 255]));
       containerBuffer.write(opaqueBlack, size.width);
 
       out.placeCursor({ x: 0, y: 0 });
@@ -268,16 +264,19 @@ export async function createWindowWithToolbar(
         lastWidth = newSize.width;
         lastHeight = newSize.height;
 
-        // Tear down old paint handlers and placements immediately
-        // to prevent stale handlers from receiving events at the new size
-        for (const destructor of destructors) {
-          destructor();
-        }
+        // Capture old paint handlers to tear them down after new ones are placed.
+        // This prevents the terminal background (logs) from becoming visible 
+        // during the transition.
+        const oldDestructors = [...destructors];
         destructors.length = 0;
-        clearPlacements();
 
         updateViewSizes(this, newSize);
         registerPaints(padSize(newSize));
+
+        // Tear down old handlers ONLY after the new background is placed.
+        for (const destructor of oldDestructors) {
+          destructor();
+        }
 
         // Force Electron to schedule a full repaint at the new size.
         // Without this, the offscreen renderer won't produce a frame

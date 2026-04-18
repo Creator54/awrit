@@ -178,7 +178,13 @@ app.whenReady().then(async () => {
   out.clearScreen();
   out.placeCursor({ x: 0, y: 0 });
   
-  const window = await createWindowWithToolbar(getWindowSize(), INITIAL_URL);
+  let size = getWindowSize();
+  if (size.width === 0 || size.height === 0) {
+    console_.error('Warning: Terminal reported 0x0 size, using fallback 800x600');
+    size = { ...size, width: 800, height: 600 };
+  }
+  
+  const window = await createWindowWithToolbar(size, INITIAL_URL);
 
   ipcMain.handle('findInPage', (_, text: string, opts) => {
     window.content.webContents.findInPage(text, opts);
