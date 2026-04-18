@@ -27,11 +27,8 @@ export const sessionPromise = new Promise<Session>((resolve) => {
       session = ElectronSession.fromPartition('persist:custom-awrit');
     }
     
-    // pretend we're Chrome
-    const userAgent = session
-      .getUserAgent()
-      .replace(/\sElectron\/\S+/, '')
-      .replace(new RegExp(`\\s${app.getName()}/\\S+`), '');
+    // Pretend we're Safari (not Chrome to avoid detection)
+    const userAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15`;
 
     session.setUserAgent(userAgent);
     resolve(session);

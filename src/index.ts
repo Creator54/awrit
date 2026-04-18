@@ -175,8 +175,9 @@ app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin');
 
 // Enable remote debugging port for programmatic control
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
-// Allow remote connections (for external CDP clients)
-app.commandLine.appendSwitch('remote-allow-origins', '*');
+
+// Disable features that trigger Google detection
+app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
 
 app.whenReady().then(async () => {
   // Clear the screen again right before creating the window to wipe out 
