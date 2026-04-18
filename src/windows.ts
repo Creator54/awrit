@@ -177,7 +177,14 @@ export async function createWindowWithToolbar(
   function registerPaints(size: Size) {
     if (hasAnimation) {
       const containerBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
-      containerBuffer.writeEmpty();
+      
+      // Fill with opaque black immediately to cover terminal logs
+      const opaqueBlack = Buffer.alloc(size.width * size.height * 4);
+      for (let i = 0; i < opaqueBlack.length; i += 4) {
+        opaqueBlack[i + 3] = 255; // Opaque alpha
+      }
+      containerBuffer.write(opaqueBlack, size.width);
+
       out.placeCursor({ x: 0, y: 0 });
       const containerFrame = paintInitialFrame(containerBuffer, size);
       destructors.push(
@@ -195,6 +202,17 @@ export async function createWindowWithToolbar(
 
   registerPaints(padSize(size));
 
+  // Start loading toolbar immediately so it can paint its skeleton
+  if (options.dev) {
+    toolbar.webContents.loadURL(`http://localhost:${TOOLBAR_PORT}`);
+  } else {
+    resetForFrameQuirk(toolbar.webContents);
+    toolbar.webContents.loadFile('../dist/toolbar/index.html');
+  }
+
+  // Force an early paint for the toolbar to show the UI
+  toolbar.webContents.invalidate();
+
   // Add to extensions
   extensionsPromise.then((extensions) => {
     extensions.addTab(content.webContents, content);
@@ -211,18 +229,15 @@ export async function createWindowWithToolbar(
         errorDescription,
       });
     });
-    toolbar.webContents.loadURL(`http://localhost:${TOOLBAR_PORT}`);
     toolbar.webContents.openDevTools({
       mode: 'detach',
       title: 'Toolbar Dev Tools',
       activate: false,
     });
-  } else {
-    resetForFrameQuirk(toolbar.webContents);
-    toolbar.webContents.loadFile('../dist/toolbar/index.html');
   }
   resetForFrameQuirk(content.webContents);
   content.webContents.loadURL(initialUrl);
+  content.webContents.invalidate();
 
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);

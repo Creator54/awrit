@@ -1,3 +1,6 @@
+import * as out from './tty/output';
+out.setup();
+
 import { app, dialog, ipcMain } from 'electron';
 import {
   termEnableFeatures,
@@ -6,7 +9,6 @@ import {
   termDisableFeatures,
   getWindowSize,
 } from 'awrit-native-rs';
-import * as out from './tty/output';
 import { handleInput } from './inputHandler';
 import { createWindowWithToolbar, type WindowView } from './windows';
 import { console_ } from './console';
@@ -130,7 +132,7 @@ function inputHandler(evt: TermEvent) {
   handleInput(evt);
 }
 
-function setup() {
+function initializeTerminal() {
   const cleanup_ = () => cleanup();
   process.on('SIGINT', () => cleanup(0));
   process.on('SIGTERM', cleanup_);
@@ -152,7 +154,9 @@ function setup() {
   out.placeCursor({ x: 0, y: 0 });
 }
 
-setup();
+initializeTerminal();
+
+
 
 // Disable Electron's stdout logging
 app.commandLine.appendSwitch('log-level', '0');
@@ -169,6 +173,11 @@ app.commandLine.appendSwitch('remote-debugging-port', '9222');
 app.commandLine.appendSwitch('remote-allow-origins', '*');
 
 app.whenReady().then(async () => {
+  // Clear the screen again right before creating the window to wipe out 
+  // any Electron startup logs that might have appeared during initialization.
+  out.clearScreen();
+  out.placeCursor({ x: 0, y: 0 });
+  
   const window = await createWindowWithToolbar(getWindowSize(), INITIAL_URL);
 
   ipcMain.handle('findInPage', (_, text: string, opts) => {
