@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const CHROME_WEB_STORE_EXTENSIONS = [
   // uBlock Origin Lite
-  'ddkjiahejlhfcafbddmgiahcphecmpfh',
+  // 'ddkjiahejlhfcafbddmgiahcphecmpfh',
 ];
 
 export const extensionsPromise = sessionPromise.then((session) => {
