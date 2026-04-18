@@ -1,6 +1,7 @@
 import type { KeyEvent as KeyEventOriginal, TermEvent } from 'awrit-native-rs';
 import { handleEvent as handleKeyBinding } from './keybindings';
-import { focusedView } from './windows';
+import { focusedView, getWindowSize } from './windows';
+import { showNavigationOverlay } from './tty/overlay';
 
 const WHEEL_DELTA = 100;
 const NAVIGATION_THRESHOLD = 3;
@@ -135,10 +136,13 @@ export function handleInput(evt: TermEvent) {
           Math.abs(horizontalScrollAccumulator) >= NAVIGATION_THRESHOLD &&
           now - lastNavigationTime > NAVIGATION_COOLDOWN
         ) {
+          const winSize = getWindowSize();
           if (direction === -1) {
             view.back();
+            showNavigationOverlay('left', winSize);
           } else {
             view.forward();
+            showNavigationOverlay('right', winSize);
           }
           lastNavigationTime = now;
           horizontalScrollAccumulator = 0;

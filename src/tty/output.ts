@@ -21,7 +21,10 @@ export const clearScreen = () => {
 };
 
 export function setTitle(title: string) {
-  stdout.write(ESC`]2;${title}\a`);
+  // Sanitize title to remove control characters and escape sequences
+  // This prevents malicious websites from injecting terminal control codes via document.title
+  const sanitized = title.replace(/[\x00-\x1f\x7f]/g, '');
+  stdout.write(ESC`]2;${sanitized}\a`);
 }
 
 export function requestWindowSize() {
