@@ -44,7 +44,8 @@ export type WindowView = {
   layoutContainer: LayoutContainer;
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
-  relayout: () => void;
+  relayout: (force?: boolean) => void;
+  toggleUrlBar: () => void;
 } & Actions;
 
 export const focusedView: {
@@ -234,7 +235,7 @@ export async function createWindowWithToolbar(
     layoutContainer,
     toolbarNode,
     contentNode,
-    relayout() {
+    relayout(force = false) {
       // Coalesce multiple resize events into a single relayout on next tick
       if (relayoutScheduled) return;
       relayoutScheduled = true;
@@ -242,8 +243,8 @@ export async function createWindowWithToolbar(
         relayoutScheduled = false;
         const newSize = getWindowSize();
 
-        // Skip if the size hasn't actually changed
-        if (newSize.width === lastWidth && newSize.height === lastHeight) {
+        // Skip if the size hasn't actually changed and not forced
+        if (!force && newSize.width === lastWidth && newSize.height === lastHeight) {
           return;
         }
         lastWidth = newSize.width;
@@ -265,7 +266,29 @@ export async function createWindowWithToolbar(
         // until something else triggers a content change (e.g. scroll).
         toolbar.webContents.invalidate();
         content.webContents.invalidate();
+
+        // Focus and a small delay before another invalidate can help 
+        // wake up the renderer if it got stuck during the transition.
+        view.content.focusOnWebView();
+
+        // Second invalidate after a small delay to ensure the renderer 
+        // has processed the bounds change and is ready to produce a frame.
+        setTimeout(() => {
+          content.webContents.invalidate();
+        }, 50);
       });
+    },
+    toggleUrlBar() {
+      const isVisible = view.toolbarNode.height.value !== 0;
+      const newHeight = isVisible ? 0 : TOOLBAR_HEIGHT;
+      view.toolbarNode.height.value = newHeight;
+
+      // Expose state to renderer
+      // @ts-ignore
+      (globalThis as any).__AWRIT_URL_BAR_VISIBLE__ = !isVisible;
+      view.toolbar.webContents.send('toolbar:set-url-bar-visible', !isVisible);
+
+      view.relayout(true);
     },
     back: () => {
       content.webContents.goBack();

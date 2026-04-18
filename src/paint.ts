@@ -35,11 +35,7 @@ export function registerPaintedContent(
   const contents = w.webContents;
   const frameNumber = 2 + containerFrame.paintedContent++;
 
-  w.on('resize', () => {
-    // result.frame?.delete();
-    // result.frame = containerFrame.loadFrame(2, compositeName, bounds);
-    // console_.error('bounds-changed', id, bounds);
-  });
+
 
   if (!features.current) {
     console_.error('No features available');

@@ -351,7 +351,7 @@ function calculateNodeAndQueueChildren(
     // First pass: count auto-height children and calculate fixed height total
     for (const child of node.children) {
       const childHeight = getSizeInLogicalPixels(container, child.height);
-      if (child.height.unit === 'auto' || childHeight === 0) {
+      if (child.height.unit === 'auto') {
         autoHeightCount++;
       } else {
         remainingHeight -= childHeight;
@@ -364,12 +364,12 @@ function calculateNodeAndQueueChildren(
       let childHeight = getSizeInLogicalPixels(container, child.height);
 
       // Container children get full width
-      if (child.width.unit === 'auto' || childWidth === 0) {
+      if (child.width.unit === 'auto') {
         childWidth = nodeWidth;
       }
 
       // Auto-height children share remaining space
-      if (child.height.unit === 'auto' || childHeight === 0) {
+      if (child.height.unit === 'auto') {
         childHeight = autoHeightCount > 0 ? remainingHeight / autoHeightCount : 0;
       }
 
@@ -397,7 +397,7 @@ function calculateNodeAndQueueChildren(
       : getSizeInLogicalPixels(container, child.height);
     const childUnit = isRow ? child.width.unit : child.height.unit;
 
-    if (childUnit === 'auto' || childSize === 0) {
+    if (childUnit === 'auto') {
       autoCount++;
     } else {
       fixedSpace += childSize;
@@ -419,21 +419,21 @@ function calculateNodeAndQueueChildren(
 
     // For row/column layouts, handle auto-sized children
     if (isRow) {
-      if (child.width.unit === 'auto' || childWidth === 0) {
+      if (child.width.unit === 'auto') {
         // In a row, auto-width children share available space
         childWidth = autoSize;
       }
       // In a row, height is always full height unless specified
-      if (child.height.unit === 'auto' || childHeight === 0) {
+      if (child.height.unit === 'auto') {
         childHeight = nodeHeight;
       }
     } else {
       // In a column, width is always full width unless specified
-      if (child.width.unit === 'auto' || childWidth === 0) {
+      if (child.width.unit === 'auto') {
         childWidth = nodeWidth;
       }
       // In a column, auto-height children share available space
-      if (child.height.unit === 'auto' || childHeight === 0) {
+      if (child.height.unit === 'auto') {
         childHeight = autoSize;
       }
     }

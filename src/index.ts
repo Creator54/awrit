@@ -8,7 +8,7 @@ import {
 } from 'awrit-native-rs';
 import * as out from './tty/output';
 import { handleInput } from './inputHandler';
-import { createWindowWithToolbar } from './windows';
+import { createWindowWithToolbar, type WindowView } from './windows';
 import { console_ } from './console';
 import { options } from './args';
 import { features } from './features';
@@ -40,6 +40,9 @@ function loadConfig(config: typeof import('../config.js')) {
         bindings[key] = (config.keybindings as any)[key];
       }
     }
+    // Add default system keybindings
+    bindings['<C-b>'] = ({ view }: { view?: WindowView }) => view?.toggleUrlBar();
+
     loadKeyBindings({ keybindings: bindings });
   }
   if (config.profile !== undefined) {
