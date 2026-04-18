@@ -29,7 +29,7 @@ import {
 import { getDisplayScale } from './dpi';
 import { features } from './features';
 import { updateCursor } from './tty/cursor';
-import { debounce } from './debounce';
+
 
 export type Actions = {
   back: () => void;
@@ -223,6 +223,10 @@ export async function createWindowWithToolbar(
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
+  let relayoutScheduled = false;
+  let lastWidth = size.width;
+  let lastHeight = size.height;
+
   const view: WindowView = {
     toolbar,
     content,
@@ -231,14 +235,37 @@ export async function createWindowWithToolbar(
     toolbarNode,
     contentNode,
     relayout() {
-      for (const destructor of destructors) {
-        destructor();
-      }
-      destructors.length = 0;
-      clearPlacements();
-      const size = getWindowSize();
-      updateViewSizes(this, size);
-      registerPaints(padSize(size));
+      // Coalesce multiple resize events into a single relayout on next tick
+      if (relayoutScheduled) return;
+      relayoutScheduled = true;
+      setImmediate(() => {
+        relayoutScheduled = false;
+        const newSize = getWindowSize();
+
+        // Skip if the size hasn't actually changed
+        if (newSize.width === lastWidth && newSize.height === lastHeight) {
+          return;
+        }
+        lastWidth = newSize.width;
+        lastHeight = newSize.height;
+
+        // Tear down old paint handlers and placements immediately
+        // to prevent stale handlers from receiving events at the new size
+        for (const destructor of destructors) {
+          destructor();
+        }
+        destructors.length = 0;
+        clearPlacements();
+
+        updateViewSizes(this, newSize);
+        registerPaints(padSize(newSize));
+
+        // Force Electron to schedule a full repaint at the new size.
+        // Without this, the offscreen renderer won't produce a frame
+        // until something else triggers a content change (e.g. scroll).
+        toolbar.webContents.invalidate();
+        content.webContents.invalidate();
+      });
     },
     back: () => {
       content.webContents.goBack();
@@ -262,13 +289,6 @@ export async function createWindowWithToolbar(
   toolbar.webContents.once('did-finish-load', () => {
     toolbar.webContents.send('toolbar:set-url-bar-visible', initialUrlBarVisible);
   });
-
-  process.on(
-    'SIGWINCH',
-    debounce(100, () => {
-      view.relayout();
-    }),
-  );
 
   return view;
 }

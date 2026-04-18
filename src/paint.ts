@@ -11,6 +11,7 @@ import {
   type PaintedImage,
   paintImage,
 } from './tty/kittyGraphics';
+import { Mode, setModes } from './tty/output';
 
 type PaintedContent = {
   frame?: AnimationFrame;
@@ -60,6 +61,7 @@ export function registerPaintedContent(
     const imageBufferSize = imageSize.width * imageSize.height * 4;
     if (result.buffer == null) {
       result.buffer = new ShmGraphicBuffer(imageBufferSize);
+      result.size = imageBufferSize;
     }
     if (options['debug-paint']) {
       console_.error('paint', result.buffer.nameBase64, image.getSize());
@@ -68,7 +70,7 @@ export function registerPaintedContent(
       return;
     }
 
-    if (result.size != null && imageBufferSize > result.size) {
+    if (result.size != null && imageBufferSize !== result.size) {
       if (options['debug-paint']) {
         console_.error('replace buffer', result.buffer.nameBase64, result.size, imageBufferSize);
       }
@@ -78,9 +80,11 @@ export function registerPaintedContent(
 
     const buffer = image.toBitmap();
     result.buffer.write(buffer, imageSize.width);
+    setModes([Mode.pendingUpdate], true);
     containerFrame
       .loadFrame(frameNumber, result.buffer, imageSize)
       .composite(layoutNode.deviceLayout);
+    setModes([Mode.pendingUpdate], false);
   }
 
   contents.on('paint', paint);
@@ -101,9 +105,6 @@ export function registerPaintedContentFallback(
   layoutNode: LayoutNode,
 ): PaintedContent {
   const contents = w.webContents;
-  const termSize = getWindowSize();
-  const cellToPxX = termSize.width / termSize.cols;
-  const cellToPxY = termSize.height / termSize.rows;
   let paintedImage: PaintedImage | undefined;
 
   const result: PaintedContent = {
@@ -119,18 +120,25 @@ export function registerPaintedContentFallback(
     const imageSize = image.getSize();
     const imageBufferSize = imageSize.width * imageSize.height * 4;
 
+    // Recompute cell metrics on every paint so they stay correct after resize
+    const termSize = getWindowSize();
+    const cellToPxX = termSize.width / termSize.cols;
+    const cellToPxY = termSize.height / termSize.rows;
+
     const position = {
       x: coordsFromPx(cellToPxX, layoutNode.deviceLayout.x),
       y: coordsFromPx(cellToPxY, layoutNode.deviceLayout.y),
     };
 
     let replace = true;
-    if (result.buffer == null || (result.size != null && imageBufferSize > result.size)) {
+    if (result.buffer == null || (result.size != null && imageBufferSize !== result.size)) {
       replace = false;
       const buffer = new ShmGraphicBuffer(imageBufferSize);
       paintedImage?.free();
       buffer.write(image.toBitmap(), imageSize.width);
+      setModes([Mode.pendingUpdate], true);
       paintedImage = paintImage(buffer, imageSize, position);
+      setModes([Mode.pendingUpdate], false);
 
       result.buffer = buffer;
       result.size = imageBufferSize;
@@ -143,9 +151,12 @@ export function registerPaintedContentFallback(
     }
 
     if (replace && paintedImage) {
+      setModes([Mode.pendingUpdate], true);
       paintedImage.replace(image.toBitmap());
+      setModes([Mode.pendingUpdate], false);
     }
   }
+
   contents.on('paint', paint);
 
   weakPaintedContents_.set(w, result);

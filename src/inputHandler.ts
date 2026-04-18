@@ -55,8 +55,13 @@ export function handleInput(evt: TermEvent) {
       break;
     }
 
-    case 'resize':
+    case 'resize': {
+      const resizeView = focusedView.current;
+      if (resizeView) {
+        resizeView.relayout();
+      }
       break;
+    }
 
     case 'focus':
       break;
