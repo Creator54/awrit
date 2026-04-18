@@ -151,8 +151,9 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   }
 
   const { code, modifiers } = keyEvent;
+  const normalizedCode = code.toLowerCase();
   const sortedModifiers = [...modifiers].sort();
-  const key = sortedModifiers.length > 0 ? [...sortedModifiers, code].join('+') : code;
+  const key = sortedModifiers.length > 0 ? [...sortedModifiers, normalizedCode].join('+') : normalizedCode;
 
   // Clear any existing timeout
   if (timeoutId) {

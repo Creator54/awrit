@@ -154,7 +154,23 @@ function find({ view }) {
 
 /** @type {KeyBindingAction} */
 function copy({ view }) {
-  view.focusedContent.copy();
+  const { clipboard } = require('electron');
+  view.focusedContent
+    .executeJavaScript(`(() => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return activeEl.value.substring(activeEl.selectionStart, activeEl.selectionEnd);
+      }
+      return window.getSelection().toString();
+    })()`)
+    .then((selectedText) => {
+      if (selectedText) {
+        clipboard.writeText(selectedText);
+      }
+    })
+    .catch((err) => {
+      console.error('[Action] Copy failed:', err);
+    });
 }
 
 /** @type {KeyBindingAction} */
