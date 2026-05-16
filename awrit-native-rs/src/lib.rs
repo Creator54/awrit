@@ -28,6 +28,7 @@ pub struct DirtyRect {
 #[napi(custom_finalize)]
 pub struct ShmGraphicBuffer {
   name: String,
+  name_base64: String,
   size: u32,
   fd: Option<std::os::unix::io::RawFd>,
   ptr: Option<std::ptr::NonNull<std::ffi::c_void>>,
@@ -71,9 +72,11 @@ impl ShmGraphicBuffer {
       &hex
     };
     let name = format!("/awrit_{}", significant_part);
+    let name_base64 = BASE64.encode(name.as_bytes());
 
     Self {
       name,
+      name_base64,
       size,
       fd: None,
       ptr: None,
@@ -124,7 +127,7 @@ impl ShmGraphicBuffer {
   /// Returns the shared memory name as a base64 encoded string
   #[napi(getter)]
   pub fn name_base64(&self) -> String {
-    BASE64.encode(self.name.as_bytes())
+    self.name_base64.clone()
   }
 
   /// Creates and truncates the shared memory segment to the specified size, filling it with zeros

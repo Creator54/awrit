@@ -1,5 +1,6 @@
 import { console_ } from '../console';
 import { OSC } from './escapeCodes';
+import { write } from './output';
 
 const fallbackCursor = 'default';
 let lastCursor = '';
@@ -47,6 +48,6 @@ export function updateCursor(_event: any, cursor: string) {
   cursor_ = supportedCursors.has(cursor_) ? cursor_ : fallbackCursor;
   if (cursor_ === lastCursor) return;
 
-  process.stdout.write(OSC`22;${cursor_}`);
+  write(OSC`22;${cursor_}`);
   lastCursor = cursor_;
 }

@@ -12,7 +12,7 @@ import {
   type PaintedImage,
   paintImage,
 } from './tty/kittyGraphics';
-import { Mode, setModes } from './tty/output';
+import { Mode, setModes, startBatch, endBatch } from './tty/output';
 
 type PaintedContent = {
   frame?: AnimationFrame;
@@ -94,12 +94,14 @@ export function registerPaintedContent(
     const buffer = image.toBitmap();
     result.buffer.write(buffer, imageSize.width);
 
+    startBatch();
     setModes([Mode.pendingUpdate], true);
     lastImageSize = imageSize;
     containerFrame
       .loadFrame(frameNumber, result.buffer, imageSize)
       .composite(layoutNode.deviceLayout);
     setModes([Mode.pendingUpdate], false);
+    endBatch();
   }
 
   contents.on('paint', paint);
@@ -176,12 +178,13 @@ export function registerPaintedContentFallback(
 
     if (replace && paintedImage) {
       const bitmap = image.toBitmap();
-      result.buffer.write(bitmap, imageSize.width);
       
+      startBatch();
       setModes([Mode.pendingUpdate], true);
-      // Fallback mode replace() just triggers a redraw in terminal
+      // Fallback mode replace() writes to buffer and triggers a redraw in terminal
       paintedImage.replace(bitmap);
       setModes([Mode.pendingUpdate], false);
+      endBatch();
     }
   }
 

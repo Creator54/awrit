@@ -16,23 +16,46 @@ import {
 import type { Point } from './graphics';
 const { stdout } = process;
 
+let batchBuf = '';
+let inBatch = false;
+
+export const startBatch = () => {
+  inBatch = true;
+};
+
+export const endBatch = () => {
+  inBatch = false;
+  if (batchBuf.length > 0) {
+    stdout.write(batchBuf);
+    batchBuf = '';
+  }
+};
+
+export const write = (data: string) => {
+  if (inBatch) {
+    batchBuf += data;
+  } else {
+    stdout.write(data);
+  }
+};
+
 export const clearScreen = () => {
-  stdout.write(CLEAR_SCREEN);
+  write(CLEAR_SCREEN);
 };
 
 export function setTitle(title: string) {
   // Sanitize title to remove control characters and escape sequences
   // This prevents malicious websites from injecting terminal control codes via document.title
   const sanitized = title.replace(/[\x00-\x1f\x7f]/g, '');
-  stdout.write(ESC`]2;${sanitized}\a`);
+  write(ESC`]2;${sanitized}\a`);
 }
 
 export function requestWindowSize() {
-  stdout.write(CSI`14t`);
+  write(CSI`14t`);
 }
 
 export function placeCursor(point: Point = { x: 0, y: 0 }) {
-  stdout.write(CSI`${point.y};${point.x}H`);
+  write(CSI`${point.y};${point.x}H`);
 }
 
 export enum Mode {
@@ -58,11 +81,11 @@ export const setModes = (modes: Mode[], enabled: boolean) => {
   for (const mode of modes) {
     buf += CSI`${MODE}${enabled ? mode + 'h' : mode + 'l'}`;
   }
-  stdout.write(buf);
+  write(buf);
 };
 
 export const setup = () => {
-  stdout.write(
+  write(
     S7C1T +
       SAVE_CURSOR +
       SAVE_PRIVATE_MODE_VALUES +
@@ -105,5 +128,5 @@ export const cleanup = () => {
   clearScreen();
   setModes([Mode.alternateScreen, Mode.mouseMoveTracking, Mode.mouseSgrPixelMode], false);
   setModes([Mode.textCursor], true);
-  stdout.write(RESTORE_PRIVATE_MODE_VALUES + RESTORE_CURSOR + RESTORE_COLORS);
+  write(RESTORE_PRIVATE_MODE_VALUES + RESTORE_CURSOR + RESTORE_COLORS);
 };

@@ -183,6 +183,10 @@ app.commandLine.appendSwitch('remote-debugging-port', '9222');
 // Disable features that trigger Google detection
 app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
 
+app.on('window-all-closed', () => {
+  cleanup(0);
+});
+
 app.whenReady().then(async () => {
   // Force dark mode for consistency with awrit UI
   nativeTheme.themeSource = 'dark';

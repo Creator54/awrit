@@ -2,8 +2,7 @@ import { GFX } from './escapeCodes';
 import type { Rect, Size } from './graphics';
 import { options } from '../args';
 import type { ShmGraphicBuffer } from 'awrit-native-rs';
-import { placeCursor } from './output';
-const { stdout } = process;
+import { placeCursor, write } from './output';
 
 let imageId_ = 1;
 
@@ -25,7 +24,7 @@ function rect_(rect: Rect) {
 function shmRgba_(nameBase64: string, size: Size, control: string) {
   // f=32 rgba 32-bit
   // t=s SHM name
-  stdout.write(GFX`f=32,t=s${sv_size_(size)},${control};${nameBase64}`);
+  write(GFX`f=32,t=s${sv_size_(size)},${control};${nameBase64}`);
 }
 
 function paintBitmap(name: string, size: Size, control?: string) {
@@ -54,7 +53,7 @@ export function paintInitialFrame(buffer: ShmGraphicBuffer, size: Size, options?
   // paint and transfer first frame
   paintBitmap(buffer.nameBase64, size, `i=${id}${zStr}`);
   // pause at the first frame
-  stdout.write(GFX`a=a,i=${id},c=1`);
+  write(GFX`a=a,i=${id},c=1`);
 
   return {
     size,
@@ -79,7 +78,7 @@ function loadFrame(id: ImageId, frame: number, nameBase64: string, size: Size): 
 
 function deleteFrame(id: ImageId, frame: number) {
   // a=d,d=F delete animation frame, freeing data
-  stdout.write(GFX`a=d,d=f,i=${id},r=${frame}`);
+  write(GFX`a=d,d=f,i=${id},r=${frame}`);
 }
 
 function compositeFrame(
@@ -90,18 +89,18 @@ function compositeFrame(
 ) {
   // a=c composite animation frame
   // C=1 replace pixels (src copy)
-  stdout.write(
+  write(
     GFX`a=c${quiet},C=1,i=${id},r=${sourceFrame},c=${destinationFrame}${rect_(destinationRect)}`,
   );
 }
 
 export function clearPlacements() {
-  stdout.write(GFX`a=d,d=A`);
+  write(GFX`a=d,d=A`);
 }
 
 function freeImage(id: ImageId) {
   // a=d,d=I delete image
-  stdout.write(GFX`a=d,d=I,i=${id}`);
+  write(GFX`a=d,d=I,i=${id}`);
 }
 
 // Ghostty and probably most other terminals only support a very small
@@ -131,7 +130,7 @@ export function paintImage(
     buffer,
     free: () => freeImage(id),
     replace: (buffer_) => {
-      buffer.write(buffer_, size.width * 4);
+      buffer.write(buffer_, size.width);
       // freeImage(id);
       placeCursor({ x: position.x.cell, y: position.y.cell });
       paintBitmap(buffer.nameBase64, size, control);

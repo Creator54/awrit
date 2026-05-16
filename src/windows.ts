@@ -83,8 +83,6 @@ export const focusedView: {
   previous: null,
 };
 
-export const windowViews = new WeakMap<BrowserWindow, WindowView>();
-
 const OMNIBOX_WIDTH_PERCENT = 0.7;
 const OMNIBOX_HEIGHT_PERCENT = 0.4;
 const OMNIBOX_MIN_WIDTH = 400;
