@@ -13,13 +13,16 @@ if (!options.dev) {
 
 out.setup();
 
-import { app, dialog, ipcMain, nativeTheme } from 'electron';
+import { app, dialog, ipcMain, nativeTheme, Menu } from 'electron';
 import {
   termEnableFeatures,
   listenForInput,
   type TermEvent,
   termDisableFeatures,
 } from 'awrit-native-rs';
+import { handleDeepLinkAuth } from './auth';
+import { sessionPromise } from './session';
+
 process.on('uncaughtException', (err) => {
   const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
   logStream.write(`UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}\n`);
@@ -78,9 +81,9 @@ function loadConfig(config: typeof import('../config.js')) {
       setCellPadding(config.kitty.padding.x, config.kitty.padding.y);
     }
   }
-  if (config.oauth) {
-    const { setOAuthConfig } = require('./authConfig');
-    setOAuthConfig(config.oauth);
+  if (config.auth) {
+    const { registerProviders } = require('./authConfig');
+    registerProviders(config.auth);
   }
 }
 
@@ -183,9 +186,37 @@ app.commandLine.appendSwitch('remote-debugging-port', '9222');
 // Disable features that trigger Google detection
 app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
 
+// Register awrit:// protocol for deep-linking (Generic Auth Bridge)
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('awrit', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('awrit');
+}
+
+// Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    // Someone tried to run a second instance, we should focus our window.
+    // Also handle deep links from the command line (Linux/Windows)
+    const url = commandLine.pop();
+    if (url && url.startsWith('awrit://')) {
+      app.emit('open-url', new Event('open-url'), url);
+    }
+  });
+}
+
 app.on('window-all-closed', () => {
   cleanup(0);
 });
+
+// Disable default menu bar
+Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   // Force dark mode for consistency with awrit UI
@@ -203,6 +234,19 @@ app.whenReady().then(async () => {
   }
   
   const window = await createWindowWithToolbar(size, INITIAL_URL);
+
+  // Handle deep-linking (e.g. awrit://auth-callback)
+  app.on('open-url', async (_event, url) => {
+    console_.log('Received deep link URL:', url);
+    const session = await sessionPromise;
+    await handleDeepLinkAuth(url, session);
+  });
+
+  // Check for deep link on startup (Linux/Windows)
+  const startUrl = process.argv.find(arg => arg.startsWith('awrit://'));
+  if (startUrl) {
+    app.emit('open-url', new Event('open-url'), startUrl);
+  }
 
   ipcMain.handle('findInPage', (_, text: string, opts) => {
     window.content.webContents.findInPage(text, opts);

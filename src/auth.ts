@@ -6,10 +6,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { console_ } from './console';
 
-export interface OAuthConfig {
+export interface AuthProvider {
+  name: string;
+  domains: string[];
   clientId: string;
   scopes: string[];
+  authorizeUrl: string;
+  tokenUrl: string;
   redirectPort?: number;
+  /** Optional function to exchange token for cookies/session */
+  establishSession?: (session: Session, accessToken: string) => Promise<void>;
 }
 
 export class OAuthManager {
@@ -19,13 +25,13 @@ export class OAuthManager {
   private state: string = '';
   private tokenPath: string;
 
-  constructor(private config: OAuthConfig) {
-    if (config.redirectPort) {
-      this.currentPort = config.redirectPort;
+  constructor(private provider: AuthProvider) {
+    if (provider.redirectPort) {
+      this.currentPort = provider.redirectPort;
     }
     // Store tokens in the user config directory
     const userDataPath = app.getPath('userData');
-    this.tokenPath = path.join(userDataPath, 'google_tokens.json');
+    this.tokenPath = path.join(userDataPath, `auth_tokens_${provider.name}.json`);
   }
 
   /**
@@ -82,12 +88,12 @@ export class OAuthManager {
 
       this.server.listen(this.currentPort, '127.0.0.1', () => {
         const authUrl = this.buildAuthUrl(codeChallenge);
-        console_.log(`Opening system browser for OAuth: ${authUrl}`);
+        console_.log(`Opening system browser for OAuth [${this.provider.name}]: ${authUrl}`);
         shell.openExternal(authUrl);
       });
 
       this.server.on('error', (err) => {
-        console_.error('OAuth server error:', err);
+        console_.error(`OAuth server error [${this.provider.name}]:`, err);
         this.cleanup();
         reject(err);
       });
@@ -97,14 +103,14 @@ export class OAuthManager {
   private async exchangeCodeForTokens(code: string): Promise<any> {
     const redirectUri = `http://127.0.0.1:${this.currentPort}/callback`;
     const params = new URLSearchParams({
-      client_id: this.config.clientId,
+      client_id: this.provider.clientId,
       code_verifier: this.codeVerifier,
       code,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     });
 
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+    const response = await fetch(this.provider.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
@@ -124,7 +130,7 @@ export class OAuthManager {
     try {
       fs.writeFileSync(this.tokenPath, JSON.stringify(tokens, null, 2));
     } catch (err) {
-      console_.error('Failed to save OAuth tokens:', err);
+      console_.error(`Failed to save OAuth tokens [${this.provider.name}]:`, err);
     }
   }
 
@@ -134,19 +140,19 @@ export class OAuthManager {
         return JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
       }
     } catch (err) {
-      console_.error('Failed to load OAuth tokens:', err);
+      console_.error(`Failed to load OAuth tokens [${this.provider.name}]:`, err);
     }
     return null;
   }
 
   public async refreshToken(refreshToken: string): Promise<any> {
     const params = new URLSearchParams({
-      client_id: this.config.clientId,
+      client_id: this.provider.clientId,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     });
 
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+    const response = await fetch(this.provider.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
@@ -177,7 +183,7 @@ export class OAuthManager {
         const refreshed = await this.refreshToken(tokens.refresh_token);
         return refreshed.access_token;
       } catch (err) {
-        console_.error('Token refresh failed, returning last known access token');
+        console_.error(`Token refresh failed [${this.provider.name}], returning last known access token`);
         return tokens.access_token;
       }
     }
@@ -187,65 +193,35 @@ export class OAuthManager {
 
   private buildAuthUrl(codeChallenge: string): string {
     const redirectUri = `http://127.0.0.1:${this.currentPort}/callback`;
-    const scopes = encodeURIComponent(this.config.scopes.join(' '));
+    const url = new URL(this.provider.authorizeUrl);
     
-    return `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${this.config.clientId}&` +
-      `redirect_uri=${redirectUri}&` +
-      `response_type=code&` +
-      `scope=${scopes}&` +
-      `state=${this.state}&` +
-      `code_challenge=${codeChallenge}&` +
-      `code_challenge_method=S256&` +
-      `access_type=offline&` +
-      `prompt=consent`;
+    url.searchParams.set('client_id', this.provider.clientId);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', this.provider.scopes.join(' '));
+    url.searchParams.set('state', this.state);
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    
+    // Provider specific extras
+    if (this.provider.name === 'google') {
+      url.searchParams.set('access_type', 'offline');
+      url.searchParams.set('prompt', 'consent');
+    }
+    
+    return url.toString();
   }
 
   /**
-   * Attempts to exchange an access token for session cookies and inject them.
-   * This uses the internal Google OAuthLogin endpoint which is used by some official apps.
+   * Attempts to establish a session using the provider's specific logic.
    */
   public async establishSession(session: Session, accessToken: string): Promise<void> {
-    console_.log('Attempting to establish Google session in Electron...');
-    
-    // Note: This endpoint is technically internal/legacy but often works for this purpose
-    const loginUrl = `https://www.google.com/accounts/OAuthLogin?auth=${accessToken}`;
-    
-    const response = await fetch(loginUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch session cookies: ${response.statusText}`);
-    }
-
-    const body = await response.text();
-    // The response body often contains SID=... LSID=... Auth=...
-    const lines = body.split('\n');
-    for (const line of lines) {
-      const [key, value] = line.split('=');
-      if (key && value) {
-        const cookieName = key.trim();
-        const cookieValue = value.trim();
-        
-        // Inject into Electron's cookie jar
-        await session.cookies.set({
-          url: 'https://google.com',
-          name: cookieName,
-          value: cookieValue,
-          domain: '.google.com',
-          path: '/',
-          secure: true,
-          httpOnly: true,
-          sameSite: 'no_restriction'
-        });
-      }
+    if (this.provider.establishSession) {
+      return this.provider.establishSession(session, accessToken);
     }
     
-    console_.log('Session establishment attempt complete.');
+    // Default: no session establishment logic
+    console_.log(`No session establishment logic defined for provider: ${this.provider.name}`);
   }
 
   private cleanup() {
@@ -257,19 +233,132 @@ export class OAuthManager {
 }
 
 /**
- * Checks if a URL is a Google OAuth initiation or login URL.
+ * Global registry of auth providers.
  */
-export function isGoogleOAuthUrl(urlStr: string): boolean {
+const providers: AuthProvider[] = [];
+
+export function registerAuthProvider(provider: AuthProvider) {
+  // If provider with same name already exists, replace it
+  const index = providers.findIndex(p => p.name === provider.name);
+  if (index !== -1) {
+    providers[index] = provider;
+  } else {
+    providers.push(provider);
+  }
+}
+
+export function getProviderForUrl(urlStr: string): AuthProvider | null {
+  try {
+    const url = new URL(urlStr);
+    const hostname = url.hostname;
+    for (const provider of providers) {
+      if (provider.domains.some(d => hostname === d || hostname.endsWith('.' + d))) {
+        // For Google, only trigger on actual login entry points to avoid 
+        // redirecting every search/document visit.
+        if (provider.name === 'google') {
+          if (hostname === 'accounts.google.com' && (
+            url.pathname.startsWith('/o/oauth2') ||
+            url.pathname.startsWith('/ServiceLogin') ||
+            url.pathname.includes('/signin/')
+          )) {
+            return provider;
+          }
+          return null;
+        }
+        return provider;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Checks if a URL is an OAuth initiation or login URL for any registered provider.
+ */
+export function isAuthInitiationUrl(urlStr: string): boolean {
+  return getProviderForUrl(urlStr) !== null;
+}
+
+/**
+ * Handles incoming deep link authentication callbacks.
+ * Format: awrit://auth?provider=name&token=...&refresh=...
+ */
+export async function handleDeepLinkAuth(urlStr: string, session: Session): Promise<void> {
   try {
     const parsed = new URL(urlStr);
-    if (parsed.hostname !== 'accounts.google.com') return false;
+    if (parsed.hostname !== 'auth') return;
+
+    const providerName = parsed.searchParams.get('provider');
+    const accessToken = parsed.searchParams.get('token');
     
-    return (
-      parsed.pathname.startsWith('/o/oauth2') ||
-      parsed.pathname.startsWith('/ServiceLogin') ||
-      parsed.pathname.includes('/signin/')
-    );
-  } catch {
-    return false;
+    if (!providerName || !accessToken) {
+      console_.error('[DeepLinkAuth] Missing provider or token in URL');
+      return;
+    }
+
+    const provider = providers.find(p => p.name === providerName);
+    if (!provider) {
+      console_.error(`[DeepLinkAuth] Unknown provider: ${providerName}`);
+      return;
+    }
+
+    console_.log(`[DeepLinkAuth] Received callback for ${providerName}`);
+    
+    // Save tokens if we have them
+    const tokens = {
+      access_token: accessToken,
+      refresh_token: parsed.searchParams.get('refresh') || undefined,
+    };
+    const manager = new OAuthManager(provider);
+    manager['saveTokens'](tokens);
+
+    // Establish session
+    if (provider.establishSession) {
+      await provider.establishSession(session, accessToken);
+    }
+  } catch (e) {
+    console_.error('[DeepLinkAuth] Error handling deep link:', e);
   }
+}
+/**
+ * Pre-defined Google Session Establishment logic.
+ */
+export async function establishGoogleSession(session: Session, accessToken: string): Promise<void> {
+  console_.log('Attempting to establish Google session in Electron...');
+  
+  const loginUrl = `https://www.google.com/accounts/OAuthLogin?auth=${accessToken}`;
+  
+  const response = await fetch(loginUrl, {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch session cookies: ${response.statusText}`);
+  }
+
+  const body = await response.text();
+  const lines = body.split('\n');
+  for (const line of lines) {
+    const [key, value] = line.split('=');
+    if (key && value) {
+      const cookieName = key.trim();
+      const cookieValue = value.trim();
+      
+      await session.cookies.set({
+        url: 'https://google.com',
+        name: cookieName,
+        value: cookieValue,
+        domain: '.google.com',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'no_restriction'
+      });
+    }
+  }
+  
+  console_.log('Google session establishment attempt complete.');
 }

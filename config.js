@@ -26,16 +26,27 @@ const profile = process.env.AWRIT_PROFILE || null;
  **/
 const debugPort = 9222;
 
-/** Google OAuth Configuration
- * Required for system browser OAuth flows
+/** Secure Authentication Configuration
+ * Required for system browser OAuth flows (bypasses "Insecure Browser" errors)
  **/
-const oauth = {
-  /** Google Client ID from Cloud Console */
-  clientId: '',
-  /** OAuth Scopes */
-  scopes: ['email', 'profile'],
-  /** Local port for loopback redirect server */
-  redirectPort: 9223,
+const auth = {
+  /** 
+   * List of secure authentication providers.
+   * When you visit a domain in the 'domains' list, awrit will open your 
+   * system browser to complete the login securely.
+   * 
+   * Example Schema:
+   * providers: [{
+   *   name: 'google',
+   *   domains: ['accounts.google.com'],
+   *   clientId: 'YOUR_CLIENT_ID',
+   *   authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+   *   tokenUrl: 'https://oauth2.googleapis.com/token',
+   *   scopes: ['email', 'profile'],
+   *   redirectPort: 9223
+   * }]
+   **/
+  providers: [],
 };
 
 /** Kitty Integration
@@ -318,7 +329,7 @@ const config = {
   urlBar,
   profile,
   debugPort,
-  oauth,
+  auth,
   kitty,
 };
 
