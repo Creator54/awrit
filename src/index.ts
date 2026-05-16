@@ -178,13 +178,11 @@ app.commandLine.appendSwitch('disable-logging');
 // Prevent sysctlbyname crash: https://github.com/electron/electron/issues/45653#issuecomment-2663510200
 // Prevent navigator.webdriver = true and other automation indicators
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin');
+// Disable features: UseBrowserCalculatedOrigin (crash fix) + HeadlessBrowser (Google detection)
+app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin,HeadlessBrowser');
 
 // Enable remote debugging port for programmatic control (needed for MCP)
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
-
-// Disable features that trigger Google detection
-app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
 
 // Register awrit:// protocol for deep-linking (Generic Auth Bridge)
 if (process.defaultApp) {
