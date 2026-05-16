@@ -10,6 +10,7 @@ import {
 } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { generateErrorPage, generateCrashPage, shouldIgnoreError } from './errorPage';
 import {
   calculateLayout,
   layout,
@@ -381,6 +382,34 @@ export async function createWindowWithToolbar(
 
   content.on('closed', () => view.destroy());
   toolbar.on('closed', () => view.destroy());
+
+  // Error page: show a styled page when navigation fails (network down, DNS fail, etc.)
+  content.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      if (shouldIgnoreError(errorCode)) return;
+      console_.log(`[Error] Page load failed: ${errorDescription} (${errorCode}) for ${validatedURL}`);
+      const html = generateErrorPage({ errorCode, errorDescription, failedUrl: validatedURL });
+      content.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    },
+  );
+
+  // Crash recovery: show a recovery page when the renderer process dies
+  content.webContents.on('render-process-gone', (_event, details) => {
+    console_.error(`[Crash] Renderer process gone: ${details.reason} (exit ${details.exitCode})`);
+    const html = generateCrashPage({ reason: details.reason, exitCode: details.exitCode });
+    content.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  });
+
+  // Log when page becomes unresponsive
+  content.webContents.on('unresponsive', () => {
+    console_.error('[Warning] Page has become unresponsive');
+  });
+
+  content.webContents.on('responsive', () => {
+    console_.log('[Info] Page is responsive again');
+  });
 
   managedViews.push(view);
   focusedView.current = view;
