@@ -244,6 +244,11 @@ export async function createWindowWithToolbar(
   content.webContents.loadURL(initialUrl, { userAgent: getUAForURL(initialUrl) });
   content.webContents.invalidate();
 
+  // Limit offscreen rendering frame rate to reduce CPU usage.
+  // Terminals can't display faster than ~30fps anyway.
+  content.webContents.setFrameRate(30);
+  toolbar.webContents.setFrameRate(15); // Toolbar is mostly static
+
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
