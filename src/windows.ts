@@ -5,6 +5,7 @@ import {
   type WebContents,
   ipcMain,
   screen,
+  nativeTheme,
 } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,14 @@ import {
 } from './layout';
 import { registerPaintedContent, registerPaintedContentFallback } from './paint';
 import { Mode, setModes } from './tty/output';
-import { sessionPromise } from './session';
+import {
+  sessionPromise,
+  isGoogleDomain,
+  getUAForURL,
+  setUseFirefoxSpoof,
+} from './session';
+import { isGoogleOAuthUrl, OAuthManager } from './auth';
+import { oauthConfig } from './authConfig';
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
 import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
@@ -180,6 +188,7 @@ export async function createWindowWithToolbar(
       offscreen: true,
       nodeIntegration: false,
       contextIsolation: true,
+      disableBlinkFeatures: 'AutomationControlled',
 
       preload: path.resolve(__dirname, '../dist/preload.js'),
     },
@@ -201,9 +210,27 @@ export async function createWindowWithToolbar(
       nodeIntegration: false,
       contextIsolation: true,
       disableDialogs: true,
+      disableBlinkFeatures: 'AutomationControlled',
+      preload: path.resolve(__dirname, '../dist/content-preload.js'),
     },
     backgroundColor: '#000000', // Solid black background for content to hide terminal logs
   });
+
+  // Attempt to restore Google session if tokens exist
+  if (oauthConfig.clientId) {
+    // Disable Firefox spoofing since we are using official system browser flows
+    setUseFirefoxSpoof(false);
+    
+    const manager = new OAuthManager(oauthConfig);
+    manager.getValidToken().then(async token => {
+      if (token) {
+        console_.log('Restoring Google session from saved tokens...');
+        await manager.establishSession(content.webContents.session, token);
+      }
+    }).catch(err => {
+      console_.error('Failed to restore Google session on startup:', err);
+    });
+  }
 
   const destructors: Array<() => void> = [];
   const refreshers: Array<() => void> = [];
@@ -285,11 +312,297 @@ export async function createWindowWithToolbar(
     });
   }
   resetForFrameQuirk(content.webContents);
-  content.webContents.loadURL(initialUrl);
+  content.webContents.loadURL(initialUrl, { userAgent: getUAForURL(initialUrl) });
   content.webContents.invalidate();
 
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
+
+  // ===========================================
+  // Main-world anti-detection injection
+  // contextIsolation=true means preload window.* mocks don't reach the page.
+  // Google OAuth probes window.chrome, Notification, performance.memory, etc.
+  // On Google pages (Firefox spoof): delete Chrome-only APIs that Firefox lacks.
+  // On other pages (Chrome): mock the full Chrome API surface.
+  // ===========================================
+  const mainWorldAntiDetection = `
+    (function() {
+      if (window.__awrit_antidetect_done) return;
+      window.__awrit_antidetect_done = true;
+
+      // Detect if we're on a Google domain (Firefox-spoofed)
+      // MUST match session.ts isGoogleDomain()
+      var h = location.hostname;
+      var isGoogle = (h === 'google.com' || h.endsWith('.google.com') ||
+                     h === 'youtube.com' || h.endsWith('.youtube.com') ||
+                     h === 'googleapis.com' || h.endsWith('.googleapis.com') ||
+                     h === 'gstatic.com' || h.endsWith('.gstatic.com') ||
+                     h === 'ggpht.com' ||
+                     h === 'googleusercontent.com' || h.endsWith('.googleusercontent.com')) 
+                     && window.__awrit_use_firefox_spoof;
+      window.__awrit_is_google = isGoogle;
+
+      if (isGoogle) {
+        // ===== FIREFOX MODE (Google domain) =====
+        // Firefox does NOT have: navigator.userAgentData, window.chrome,
+        // navigator.plugins (Chrome-style), performance.memory, etc.
+        // Delete them to match Firefox behavior.
+
+        try { delete Navigator.prototype.userAgentData; } catch(e) {}
+        try { delete window.chrome; } catch(e) {}
+        try { Object.defineProperty(window, 'chrome', { get: () => undefined, configurable: true }); } catch(e) {}
+
+        // Firefox specific properties
+        try { window.InstallTrigger = {}; } catch(e) {}
+        try { window.sidebar = { addSearchEngine: () => {}, addPanel: () => {} }; } catch(e) {}
+
+        // navigator.webdriver should be undefined in Firefox too
+        try { Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined, configurable: true, enumerable: true }); } catch(e) {}
+
+        // Fix navigator properties that preload set to Chrome values.
+        // Firefox has different plugins, vendor, and no userAgentData.
+        // Delete the preload's Chrome-style overrides so Chromium defaults show through
+        // (or we set Firefox-compatible values).
+        try { delete Navigator.prototype.plugins; } catch(e) {}
+        try { delete Navigator.prototype.mimeTypes; } catch(e) {}
+        // Firefox vendor is empty string, not 'Google Inc.'
+        try { Object.defineProperty(Navigator.prototype, 'vendor', { get: function() { return ''; }, configurable: true, enumerable: true }); } catch(e) {}
+        // Firefox languages format
+        try { Object.defineProperty(Navigator.prototype, 'languages', { get: function() { return ['en-US', 'en']; }, configurable: true, enumerable: true }); } catch(e) {}
+
+        // Notification.permission — Firefox returns 'default' by default
+        if (window.Notification && window.Notification.permission === 'granted') {
+          try {
+            Object.defineProperty(window.Notification, 'permission', {
+              get: () => 'default', configurable: true,
+            });
+          } catch(e) {}
+        }
+
+      } else {
+        // ===== CHROME MODE (non-Google) =====
+        // Full Chrome API mocks for sites that fingerprint.
+
+        // 1. window.chrome
+        if (typeof window.chrome === 'undefined') {
+          window.chrome = {};
+        }
+        var chrome = window.chrome;
+
+        if (!chrome.runtime) {
+          chrome.runtime = {
+            OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+            OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+            PlatformArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+            PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+            PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+            RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
+            sendMessage: function() { return Promise.resolve(); },
+            onMessage: { addListener: function() {}, removeListener: function() {} },
+            onConnect: { addListener: function() {}, removeListener: function() {} },
+            connect: function() {
+              return {
+                onMessage: { addListener: function() {}, removeListener: function() {} },
+                onDisconnect: { addListener: function() {}, removeListener: function() {} },
+                postMessage: function() {},
+                disconnect: function() {},
+              };
+            },
+            getManifest: function() { return { manifest_version: 2, name: '', version: '1.0' }; },
+            getURL: function(path) { return 'chrome-extension://' + path; },
+            id: undefined,
+            OnConnect: { addListener: function() {} },
+            OnMessage: { addListener: function() {} },
+          };
+        }
+
+        if (!chrome.app) {
+          chrome.app = {
+            isInstalled: false,
+            InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+            RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+            runtime: {
+              onLaunched: { addListener: function() {} },
+              onRestarted: { addListener: function() {} },
+              onEmbedRequested: { addListener: function() {} },
+            },
+            window: {
+              create: function() { return Promise.resolve(); },
+              current: function() { return null; },
+            },
+          };
+        }
+
+        if (!chrome.loadTimes) {
+          chrome.loadTimes = function() {
+            var now = Date.now() / 1000;
+            return {
+              commitLoadTime: now, connectionInfo: 'h2',
+              finishDocumentLoadTime: now, finishLoadTime: now,
+              firstPaintAfterLoadTime: 0, firstPaintTime: now,
+              navigationType: 'Other', npnNegotiatedProtocol: 'h2',
+              requestTime: now, startLoadTime: now,
+              wasAlternateProtocolAvailable: false,
+              wasFetchedViaSpdy: true, wasNpnNegotiated: true,
+            };
+          };
+        }
+
+        if (!chrome.csi) {
+          chrome.csi = function() {
+            return { onloadT: Date.now(), pageT: Date.now() / 1000, startE: Date.now(), tran: 15 };
+          };
+        }
+
+        // 2. Notification.permission
+        if (typeof window.Notification !== 'undefined' && window.Notification.permission === 'granted') {
+          try {
+            Object.defineProperty(window.Notification, 'permission', {
+              get: () => 'default', configurable: true,
+            });
+          } catch(e) {}
+        }
+        if (typeof window.Notification !== 'undefined' && !window.Notification.requestPermission) {
+          window.Notification.requestPermission = function(cb) {
+            if (cb) cb('default');
+            return Promise.resolve('default');
+          };
+        }
+
+        // 3. performance.memory — Chrome-only
+        if (!window.performance.memory) {
+          Object.defineProperty(window.performance, 'memory', {
+            get: () => ({
+              usedJSHeapSize: 12000000,
+              totalJSHeapSize: 22000000,
+              jsHeapSizeLimit: 2190000000,
+            }),
+            configurable: true,
+          });
+        }
+
+        // 4. navigator.storage.estimate
+        if (navigator.storage && navigator.storage.estimate) {
+          var origEstimate = navigator.storage.estimate.bind(navigator.storage);
+          navigator.storage.estimate = function() {
+            return origEstimate().then(function(est) {
+              if (!est || est.quota === 0) {
+                return { quota: 274877906944, usage: 12000000, usageDetails: {} };
+              }
+              return est;
+            }).catch(function() {
+              return { quota: 274877906944, usage: 12000000, usageDetails: {} };
+            });
+          };
+        }
+
+        // 5. navigator.credentials
+        if (!navigator.credentials) {
+          Object.defineProperty(navigator, 'credentials', {
+            get: () => ({
+              get: function() { return Promise.reject(new DOMException('Not allowed', 'NotAllowedError')); },
+              create: function() { return Promise.reject(new DOMException('Not allowed', 'NotAllowedError')); },
+              preventSilentAccess: function() { return Promise.resolve(); },
+              store: function() { return Promise.reject(new DOMException('Not allowed', 'NotAllowedError')); },
+            }),
+            configurable: true,
+          });
+        }
+
+        // 6. navigator.mediaCapabilities
+        if (!navigator.mediaCapabilities) {
+          Object.defineProperty(navigator, 'mediaCapabilities', {
+            get: () => ({
+              decodingInfo: function() { return Promise.resolve({ supported: true, smooth: true, powerEfficient: true }); },
+              encodingInfo: function() { return Promise.resolve({ supported: true, smooth: true, powerEfficient: false }); },
+            }),
+            configurable: true,
+          });
+        }
+      }
+
+      // Shared: Notification.permission fix for both modes
+      if (typeof window.Notification !== 'undefined' && window.Notification.permission === 'granted') {
+        try {
+          Object.defineProperty(window.Notification, 'permission', {
+            get: () => 'default', configurable: true,
+          });
+        } catch(e) {}
+      }
+    })();
+  `;
+
+  // Inject on every main-frame navigation (before page scripts run)
+  content.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
+    if (isMainFrame) {
+      if (isGoogleOAuthUrl(url)) {
+        console_.log('Detected Google OAuth URL:', url);
+        
+        if (oauthConfig.clientId) {
+          // Prevent the navigation in Electron
+          event.preventDefault();
+          
+          // Show a helpful message in awrit
+          content.webContents.executeJavaScript(`
+            document.body.innerHTML = \`
+              <div style="background: #1C1B22; color: white; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
+                <h1 style="margin-bottom: 10px;">Login with Google</h1>
+                <p style="color: #ccc; margin-bottom: 20px;">Please complete the login in your system browser...</p>
+                <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 30px;"></div>
+                <button onclick="window.history.back()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button>
+                <style>
+                  @keyframes spin { to { transform: rotate(360deg); } }
+                </style>
+              </div>
+            \`;
+          `).catch(() => {});
+
+          const manager = new OAuthManager(oauthConfig);
+          manager.authenticate().then(async tokens => {
+            console_.log('Successfully got OAuth tokens');
+            
+            try {
+              // Use the access token to set session cookies in Electron
+              await manager.establishSession(content.webContents.session, tokens.access_token);
+              console_.log('Google session established. Reloading page...');
+              
+              // Reload to apply cookies
+              content.webContents.reload();
+            } catch (sessionErr) {
+              console_.error('Failed to establish session from token:', sessionErr);
+              // Fallback: at least we have the token
+            }
+          }).catch(err => {
+            console_.error('OAuth authentication failed:', err);
+          });
+          
+          // Optionally redirect the Electron window to a "Check your browser" page
+          // content.webContents.loadURL('file://...'); 
+          return;
+        } else {
+          console_.error('Google OAuth detected but no clientId configured in config.js');
+        }
+      }
+      const injection = `window.__awrit_use_firefox_spoof = ${oauthConfig.clientId ? 'false' : 'true'};\n` + mainWorldAntiDetection;
+      content.webContents.executeJavaScript(injection, true).catch(() => {});
+    }
+  });
+  // Fallback: inject again when DOM is ready (catches early inline scripts)
+  content.webContents.on('dom-ready', () => {
+    const injection = `window.__awrit_use_firefox_spoof = ${oauthConfig.clientId ? 'false' : 'true'};\n` + mainWorldAntiDetection;
+    content.webContents.executeJavaScript(injection, true).catch(() => {});
+  });
+  // Also inject right now for the initial load
+  const injection = `window.__awrit_use_firefox_spoof = ${oauthConfig.clientId ? 'false' : 'true'};\n` + mainWorldAntiDetection;
+  content.webContents.executeJavaScript(injection, true).catch(() => {});
+
+  // Force dark color scheme via CSS injection for websites that support light/dark modes
+  content.webContents.on('did-finish-load', () => {
+    content.webContents.insertCSS('html { color-scheme: dark !important; }').catch(() => {});
+  });
+  content.webContents.on('did-navigate-in-page', () => {
+    content.webContents.insertCSS('html { color-scheme: dark !important; }').catch(() => {});
+  });
 
   // @ts-ignore - monkey patch for focus management
   toolbar.focusOnWebView = () => {
@@ -467,7 +780,7 @@ function setupToolbarIPC(
   });
 
   ipcMain.on('toolbar:navigate-to', (_event, url: string) => {
-    contentContents.loadURL(url);
+    contentContents.loadURL(url, { userAgent: getUAForURL(url) });
   });
 
   ipcMain.on('toolbar:toggle-url-bar', () => {
@@ -497,6 +810,9 @@ function setupToolbarIPC(
 
   contentContents.on('did-navigate', (_event, url) => {
     toolbarContents.send('content:url-changed', url);
+    // Re-set webContents UA for in-page navigations so navigator.userAgent
+    // matches what onBeforeSendHeaders sends (Firefox for Google, Chrome for others).
+    contentContents.setUserAgent(getUAForURL(url));
   });
 
   const updateNavigationState = () => {
@@ -516,6 +832,7 @@ function setupToolbarIPC(
     if (isMainFrame) {
       toolbarContents.send('content:url-changed', url);
       updateNavigationState();
+      contentContents.setUserAgent(getUAForURL(url));
     }
   });
 

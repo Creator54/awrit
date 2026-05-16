@@ -45,6 +45,23 @@ Currently it only supports custom keybindings and changing the homepage that dis
 
 For more details on keybinding syntax and available actions, see the comments in `config.js`.
 
+## Google Services & Login
+
+To use Google services (Gmail, YouTube, Drive, etc.) securely in `awrit`, it is recommended to use the **System Browser OAuth Flow**. This follows Google's security best practices and prevents "Insecure Browser" errors.
+
+1. Create an **OAuth 2.0 Client ID** (type: "Desktop App") in the [Google Cloud Console](https://console.cloud.google.com/).
+2. Add your Client ID to `config.js`:
+   ```javascript
+   const oauth = {
+     clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+     scopes: ['email', 'profile'],
+     redirectPort: 9223,
+   };
+   ```
+3. When you attempt to log in to Google within `awrit`, it will open your system browser (Chrome/Firefox) to complete the login. Once finished, `awrit` will automatically establish your session and log you in internally.
+
+Using this flow allows `awrit` to identify as a **Genuine Chrome** browser, enabling features like **YouTube 4K** and improved Google Maps performance.
+
 ## Contributing
 
 See [Contributing to Awrit](/CONTRIBUTING.md#contributing-to-awrit).

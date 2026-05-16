@@ -13,7 +13,7 @@ if (!options.dev) {
 
 out.setup();
 
-import { app, dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain, nativeTheme } from 'electron';
 import {
   termEnableFeatures,
   listenForInput,
@@ -77,6 +77,10 @@ function loadConfig(config: typeof import('../config.js')) {
     if (config.kitty.padding) {
       setCellPadding(config.kitty.padding.x, config.kitty.padding.y);
     }
+  }
+  if (config.oauth) {
+    const { setOAuthConfig } = require('./authConfig');
+    setOAuthConfig(config.oauth);
   }
 }
 
@@ -167,19 +171,51 @@ initializeTerminal();
 // Disable Electron's stdout logging
 app.commandLine.appendSwitch('log-level', '0');
 app.commandLine.appendSwitch('disable-logging');
-// Disable Chrome DevTools logging
-app.commandLine.appendSwitch('silent-debugger-extension-api');
 
 // Prevent sysctlbyname crash: https://github.com/electron/electron/issues/45653#issuecomment-2663510200
-app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin');
+// Prevent navigator.webdriver = true and other automation indicators
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
-// Enable remote debugging port for programmatic control
+// ===========================================
+// Production Chrome configuration
+// ===========================================
+
+// Enable remote debugging port for programmatic control (needed for MCP)
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
-// Disable features that trigger Google detection
-app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
+// Consolidated enable-features (must be a single call — appendSwitch overwrites)
+// MOVED TO LINE 212 TO AVOID CONFLICTS
+
+// Consolidated disable-features (must be a single call — appendSwitch overwrites)
+app.commandLine.appendSwitch('disable-features',
+  'UseBrowserCalculatedOrigin,HeadlessBrowser,TranslateUI'
+);
+
+// Enable Chrome production features
+app.commandLine.appendSwitch('enable-component-update');
+app.commandLine.appendSwitch('enable-crash-reporter');
+app.commandLine.appendSwitch('enable-client-side-phishing-detection');
+
+// Set user data directory to look like real Chrome
+app.commandLine.appendSwitch('user-data-dir', path.join(process.env.HOME || '/tmp', '.config', 'awrit-chrome-profile'));
+
+// Set Chrome's language (real Chrome uses system language)
+app.commandLine.appendSwitch('lang', 'en-US');
+
+// Disable DevTools-specific logging (real Chrome doesn't log DevTools)
+app.commandLine.appendSwitch('silent-debugger-extension-api');
+
+// Force Chrome's internal dark mode engine
+app.commandLine.appendSwitch('force-dark-mode');
+app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark,NetworkService,NetworkServiceInProcess,TrustedDomainsForApps,SafeBrowsingProtectionLevel1,PdfUnseasoned');
+
+// Make Chrome look like it's in production mode (not development)
+app.commandLine.appendSwitch('no-experiments');
 
 app.whenReady().then(async () => {
+  // Force dark mode for consistency with awrit UI
+  nativeTheme.themeSource = 'dark';
+
   // Clear the screen again right before creating the window to wipe out 
   // any Electron startup logs that might have appeared during initialization.
   out.clearScreen();

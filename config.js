@@ -26,6 +26,18 @@ const profile = process.env.AWRIT_PROFILE || null;
  **/
 const debugPort = 9222;
 
+/** Google OAuth Configuration
+ * Required for system browser OAuth flows
+ **/
+const oauth = {
+  /** Google Client ID from Cloud Console */
+  clientId: '',
+  /** OAuth Scopes */
+  scopes: ['email', 'profile'],
+  /** Local port for loopback redirect server */
+  redirectPort: 9223,
+};
+
 /** Kitty Integration
  * Configuration for running awrit in Kitty terminal splits
  **/
@@ -152,49 +164,90 @@ function find({ view }) {
   view.focusedContent = view.toolbar.webContents;
 }
 
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
+const electron = require('electron');
 
-function writeToSystemClipboard(text) {
-  try {
-    if (process.platform === 'darwin') {
-      execSync('pbcopy', { input: text });
-    } else if (process.platform === 'linux') {
-      if (process.env.WAYLAND_DISPLAY) {
-        execSync('wl-copy', { input: text });
+// Clipboard timeout to prevent blocking (execSync causes freeze if xclip hangs)
+const CLIPBOARD_TIMEOUT_MS = 500;
+
+/**
+ * Execute a command with timeout protection
+ * Returns stdout or null on failure/timeout
+ */
+function execWithTimeout(cmd, input, timeoutMs = CLIPBOARD_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const child = exec(cmd, { encoding: 'utf8', timeout: timeoutMs }, (err, stdout) => {
+      if (err) {
+        resolve(null);
       } else {
-        execSync('xclip -selection clipboard', { input: text });
+        resolve(stdout);
       }
-    } else if (process.platform === 'win32') {
-      execSync('clip', { input: text });
+    });
+    if (input) {
+      child.stdin.write(input);
+      child.stdin.end();
     }
+  });
+}
+
+/**
+ * Write text to system clipboard
+ * Uses Electron clipboard (fast, non-blocking) with native fallback
+ */
+async function writeToSystemClipboard(text) {
+  try {
+    // Primary: Electron clipboard (fast, non-blocking)
+    electron.clipboard.writeText(text);
   } catch (e) {
-    console.error('[Clipboard] Native copy failed:', e.message);
-    // Fallback to electron
+    // Fallback: native clipboard with timeout
     try {
-      require('electron').clipboard.writeText(text);
-    } catch (err) {}
+      if (process.platform === 'darwin') {
+        await execWithTimeout('pbcopy', text);
+      } else if (process.platform === 'linux') {
+        if (process.env.WAYLAND_DISPLAY) {
+          await execWithTimeout('wl-copy', text);
+        } else {
+          await execWithTimeout('xclip -selection clipboard', text);
+        }
+      } else if (process.platform === 'win32') {
+        await execWithTimeout('clip', text);
+      }
+    } catch (nativeErr) {
+      console.error('[Clipboard] Copy failed:', nativeErr.message);
+    }
   }
 }
 
-function readFromSystemClipboard() {
+/**
+ * Read text from system clipboard
+ * Uses Electron clipboard (fast, non-blocking) with native fallback
+ */
+async function readFromSystemClipboard() {
   try {
+    // Primary: Electron clipboard (fast, non-blocking)
+    const text = electron.clipboard.readText();
+    if (text) return text;
+  } catch (e) {
+    // Continue to fallback
+  }
+  
+  // Fallback: native clipboard with timeout
+  try {
+    let result;
     if (process.platform === 'darwin') {
-      return execSync('pbpaste', { encoding: 'utf8' });
+      result = await execWithTimeout('pbpaste', null);
     } else if (process.platform === 'linux') {
       if (process.env.WAYLAND_DISPLAY) {
-        return execSync('wl-paste', { encoding: 'utf8' });
+        result = await execWithTimeout('wl-paste', null);
       } else {
-        return execSync('xclip -selection clipboard -o', { encoding: 'utf8' });
+        result = await execWithTimeout('xclip -selection clipboard -o', null);
       }
     } else if (process.platform === 'win32') {
-      return execSync('powershell Get-Clipboard', { encoding: 'utf8' });
+      result = await execWithTimeout('powershell Get-Clipboard', null);
     }
+    return result || '';
   } catch (e) {
-    console.error('[Clipboard] Native paste failed:', e.message);
-    // Fallback to electron
-    try {
-      return require('electron').clipboard.readText();
-    } catch (err) {}
+    console.error('[Clipboard] Paste failed:', e.message);
   }
   return '';
 }
@@ -211,7 +264,11 @@ function copy({ view }) {
     })()`)
     .then((selectedText) => {
       if (selectedText) {
-        writeToSystemClipboard(selectedText);
+        // writeToSystemClipboard is async but we don't need to await
+        // this prevents blocking the event loop
+        writeToSystemClipboard(selectedText).catch((err) => {
+          console.error('[Clipboard] Write failed:', err);
+        });
       }
     })
     .catch((err) => {
@@ -221,10 +278,14 @@ function copy({ view }) {
 
 /** @type {KeyBindingAction} */
 function paste({ view }) {
-  const text = readFromSystemClipboard();
-  if (text) {
-    view.focusedContent.insertText(text);
-  }
+  // readFromSystemClipboard is async, use .then() to avoid blocking
+  readFromSystemClipboard().then((text) => {
+    if (text) {
+      view.focusedContent.insertText(text);
+    }
+  }).catch((err) => {
+    console.error('[Clipboard] Read failed:', err);
+  });
 }
 
 /** @type {KeyBindingAction} */
@@ -257,6 +318,7 @@ const config = {
   urlBar,
   profile,
   debugPort,
+  oauth,
   kitty,
 };
 
