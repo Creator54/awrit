@@ -59,7 +59,3 @@ export const sessionPromise = new Promise<Session>((resolve) => {
   });
 });
 
-/** legacy helpers - now generic */
-export function isGoogleDomain(_url: string): boolean { return false; }
-export function getUAForURL(_url: string): string { return ''; }
-export function setUseFirefoxSpoof(_value: boolean) {}

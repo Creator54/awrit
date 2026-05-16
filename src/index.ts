@@ -11,7 +11,7 @@ if (!options.dev) {
   console.error = (...args) => logStream.write(args.join(' ') + '\n');
 }
 
-out.setup();
+
 
 import { app, dialog, ipcMain, nativeTheme, Menu } from 'electron';
 import {
@@ -39,7 +39,8 @@ import { console_ } from './console';
 import { features } from './features';
 import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
-
+import { loadSessionConfig } from './session';
+import { registerProviders } from './authConfig';
 let homepage = 'https://github.com/chase/awrit';
 let urlBarDefaultVisible = false;
 
@@ -74,19 +75,10 @@ function loadConfig(config: typeof import('../config.js')) {
     loadKeyBindings({ keybindings: bindings });
   }
   if (config.profile !== undefined) {
-    const { loadSessionConfig } = require('./session');
     loadSessionConfig({ profile: config.profile });
   }
-  // Load kitty config for mouse coordinate mapping
-  if (config.kitty?.cellSize) {
-    const { setCellSize, setCellPadding } = require('./inputHandler');
-    setCellSize(config.kitty.cellSize.width, config.kitty.cellSize.height);
-    if (config.kitty.padding) {
-      setCellPadding(config.kitty.padding.x, config.kitty.padding.y);
-    }
-  }
+
   if (config.auth) {
-    const { registerProviders } = require('./authConfig');
     registerProviders(config.auth);
   }
 }

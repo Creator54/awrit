@@ -23,10 +23,7 @@ import {
 } from './layout';
 import { registerPaintedContent, registerPaintedContentFallback } from './paint';
 import { Mode, setModes } from './tty/output';
-import {
-  sessionPromise,
-  getUAForURL,
-} from './session';
+import { sessionPromise } from './session';
 import { 
   getProviderForUrl, 
   OAuthManager, 
@@ -138,7 +135,7 @@ export async function createWindowWithToolbar(
   calculateLayout(layoutContainer, [contentNode]);
   calculateLayout(toolbarLayoutContainer, [toolbarNode]);
 
-  out.clearScreen();
+
 
   let destroyed = false;
 
@@ -248,7 +245,7 @@ export async function createWindowWithToolbar(
   await installedExtensionsPromise;
 
   resetForFrameQuirk(content.webContents);
-  content.webContents.loadURL(initialUrl, { userAgent: getUAForURL(initialUrl) });
+  content.webContents.loadURL(initialUrl);
   content.webContents.invalidate();
 
   // Limit offscreen rendering frame rate to reduce CPU usage.

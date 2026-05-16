@@ -16,9 +16,7 @@ let lastSentY = -1;
 let lastSentView: any = null;
 let lastSentMods = '';
 
-export function setCellSize(_width: number, _height: number) {}
 
-export function setCellPadding(_x: number, _y: number) {}
 
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
 type KeyEventModifiers = Lowercase<KeyEventOriginal['modifiers'][number]>[];
