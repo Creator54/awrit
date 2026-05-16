@@ -136,8 +136,14 @@ const keybindings = {
   },
   linux: {
     '<C-c>': copy,
+    '<C-C>': copy,
+    '<C-S-c>': copy,
+    '<C-S-C>': copy,
+    '<C-A-d>': diagnosticCopy,
+    '<C-v>': paste,
+    '<C-V>': paste,
     '<C-S-v>': paste, // standard terminal paste
-    '<C-S-V>': paste, // uppercase V variant just in case
+    '<C-S-V>': paste,
     '<C-q>': quit,
     '<C-d>': quit,
     '<C-]>': forward,
@@ -178,6 +184,14 @@ const electron = require('electron');
 const CLIPBOARD_TIMEOUT_MS = 500;
 
 /**
+ * Write text to the terminal emulator's clipboard using OSC 52.
+ */
+function writeToTerminalClipboard(text) {
+  const base64 = Buffer.from(text).toString('base64');
+  process.stdout.write(`\x1b]52;c;${base64}\x07`);
+}
+
+/**
  * Execute a command with timeout protection
  * Returns stdout or null on failure/timeout
  */
@@ -205,6 +219,9 @@ async function writeToSystemClipboard(text) {
   try {
     // Primary: Electron clipboard (fast, non-blocking)
     electron.clipboard.writeText(text);
+    
+    // Secondary: Terminal OSC 52 (Robust over SSH/Wayland)
+    writeToTerminalClipboard(text);
   } catch (e) {
     // Fallback: native clipboard with timeout
     try {
@@ -261,18 +278,27 @@ async function readFromSystemClipboard() {
 
 /** @type {KeyBindingAction} */
 function copy({ view }) {
-  view.focusedContent
-    .executeJavaScript(`(() => {
+  if (!view) return;
+  const target = view.focusedContent;
+  
+  // Use JavaScript extraction for more predictable behavior in offscreen mode
+  const copyScript = `(() => {
+    try {
       const activeEl = document.activeElement;
       if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
         return activeEl.value.substring(activeEl.selectionStart, activeEl.selectionEnd);
       }
       return window.getSelection().toString();
-    })()`)
+    } catch (e) {
+      return '';
+    }
+  })()`;
+
+  target
+    .executeJavaScript(copyScript)
     .then((selectedText) => {
-      if (selectedText) {
-        // writeToSystemClipboard is async but we don't need to await
-        // this prevents blocking the event loop
+      if (selectedText && selectedText.length > 0) {
+        // Write to both Electron and Terminal clipboards
         writeToSystemClipboard(selectedText).catch((err) => {
           console.error('[Clipboard] Write failed:', err);
         });
@@ -285,14 +311,27 @@ function copy({ view }) {
 
 /** @type {KeyBindingAction} */
 function paste({ view }) {
-  // readFromSystemClipboard is async, use .then() to avoid blocking
+  if (!view) return;
+  const target = view.focusedContent;
+  
   readFromSystemClipboard().then((text) => {
-    if (text) {
-      view.focusedContent.insertText(text);
+    if (text && text.length > 0) {
+      setImmediate(() => {
+        target.insertText(text);
+      });
     }
   }).catch((err) => {
     console.error('[Clipboard] Read failed:', err);
   });
+}
+
+/**
+ * Diagnostic tool to check if clipboard writing works at all
+ */
+function diagnosticCopy() {
+  const testText = `CLIPBOARD TEST - ${new Date().toLocaleTimeString()}`;
+  console.log('[Diagnostic] Attempting to write test text to clipboard.');
+  writeToSystemClipboard(testText).catch(e => console.error(e));
 }
 
 /** @type {KeyBindingAction} */

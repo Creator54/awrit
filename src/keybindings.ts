@@ -1,4 +1,6 @@
 import type { KeyEvent, TermEvent } from 'awrit-native-rs';
+import { options } from './args';
+import { console_ } from './console';
 import type { WindowView } from './windows';
 
 const isMac = process.platform === 'darwin';
@@ -152,8 +154,24 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
 
   const { code, modifiers } = keyEvent;
   const normalizedCode = code.toLowerCase();
-  const sortedModifiers = [...modifiers].sort();
+  
+  // Filter and normalize modifiers for matching
+  const essentialModifiers = modifiers
+    .map(m => m.toLowerCase())
+    .filter(m => ['ctrl', 'alt', 'shift', 'meta'].includes(m));
+  
+  const sortedModifiers = [...new Set(essentialModifiers)].sort();
   const key = sortedModifiers.length > 0 ? [...sortedModifiers, normalizedCode].join('+') : normalizedCode;
+
+  if (options.dev) {
+    console_.error('[KeyDebug]', {
+      rawCode: code,
+      rawMods: modifiers,
+      essentialMods: essentialModifiers,
+      matchedKey: key,
+      isDown: keyEvent.down
+    });
+  }
 
   // Clear any existing timeout
   if (timeoutId) {

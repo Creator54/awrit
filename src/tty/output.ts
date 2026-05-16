@@ -58,6 +58,14 @@ export function placeCursor(point: Point = { x: 0, y: 0 }) {
   write(CSI`${point.y};${point.x}H`);
 }
 
+/**
+ * Write text to the terminal emulator's clipboard using OSC 52.
+ */
+export function writeToTerminalClipboard(text: string) {
+  const base64 = Buffer.from(text).toString('base64');
+  write(ESC`]52;c;${base64}\x07`);
+}
+
 export enum Mode {
   cursorKeyToApp = 1,
   reverseVideo = 5,

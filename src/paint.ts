@@ -87,13 +87,16 @@ export function registerPaintedContent(
     result.buffer.write(buffer, imageSize.width);
 
     startBatch();
-    setModes([Mode.pendingUpdate], true);
-    lastImageSize = imageSize;
-    containerFrame
-      .loadFrame(frameNumber, result.buffer, imageSize)
-      .composite(layoutNode.deviceLayout);
-    setModes([Mode.pendingUpdate], false);
-    endBatch();
+    try {
+      setModes([Mode.pendingUpdate], true);
+      lastImageSize = imageSize;
+      containerFrame
+        .loadFrame(frameNumber, result.buffer, imageSize)
+        .composite(layoutNode.deviceLayout);
+      setModes([Mode.pendingUpdate], false);
+    } finally {
+      endBatch();
+    }
   }
 
   contents.on('paint', paint);
@@ -172,11 +175,14 @@ export function registerPaintedContentFallback(
       const bitmap = image.toBitmap();
       
       startBatch();
-      setModes([Mode.pendingUpdate], true);
-      // Fallback mode replace() writes to buffer and triggers a redraw in terminal
-      paintedImage.replace(bitmap);
-      setModes([Mode.pendingUpdate], false);
-      endBatch();
+      try {
+        setModes([Mode.pendingUpdate], true);
+        // Fallback mode replace() writes to buffer and triggers a redraw in terminal
+        paintedImage.replace(bitmap);
+        setModes([Mode.pendingUpdate], false);
+      } finally {
+        endBatch();
+      }
     }
   }
 
