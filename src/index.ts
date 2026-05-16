@@ -175,6 +175,11 @@ initializeTerminal();
 app.commandLine.appendSwitch('log-level', '0');
 app.commandLine.appendSwitch('disable-logging');
 
+// Memory optimizations for offscreen rendering
+app.commandLine.appendSwitch('disable-gpu-compositing'); // No GPU needed for offscreen
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+
 // Prevent sysctlbyname crash: https://github.com/electron/electron/issues/45653#issuecomment-2663510200
 // Prevent navigator.webdriver = true and other automation indicators
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');

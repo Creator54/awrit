@@ -38,6 +38,9 @@ export const sessionPromise = new Promise<Session>((resolve) => {
 
     session.setUserAgent(cleanUA);
 
+    // Disable spellchecker to save memory (Hunspell dictionaries ~10MB)
+    session.setSpellCheckerEnabled(false);
+
     // standard header handling
     session.webRequest.onBeforeSendHeaders((details, callback) => {
       const headers = details.requestHeaders;
