@@ -256,9 +256,43 @@ export async function createWindowWithToolbar(
   toolbar.webContents.setWindowOpenHandler(handleNewWindow);
   content.webContents.setWindowOpenHandler(handleNewWindow);
 
-  content.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+  content.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
     if (isMainFrame) {
       console_.log(`[Navigation] Main frame navigating to: ${url}`);
+
+      const provider = getProviderForUrl(url);
+      if (provider) {
+        console_.log(`[Auth Bridge] Intercepted navigation for provider [${provider.name}], triggering system browser...`);
+        
+        // Prevent the navigation in Electron
+        event.preventDefault();
+        
+        // Show a helpful message in awrit
+        content.webContents.executeJavaScript(`
+          document.body.innerHTML = \`
+            <div style="background: #1C1B22; color: white; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
+              <h1 style="margin-bottom: 10px;">Login with ${provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}</h1>
+              <p style="color: #ccc; margin-bottom: 20px;">Please complete the login in your system browser...</p>
+              <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 30px;"></div>
+              <button onclick="window.history.back()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button>
+              <style>
+                @keyframes spin { to { transform: rotate(360deg); } }
+              </style>
+            </div>
+          \`;
+        `).catch(() => {});
+
+        const manager = new OAuthManager(provider);
+        manager.authenticate().then(async tokens => {
+          console_.log(`[Auth Bridge] Successfully got tokens for ${provider.name}`);
+          if (provider.establishSession) {
+            await provider.establishSession(content.webContents.session, tokens.access_token);
+          }
+          content.webContents.reload();
+        }).catch(err => {
+          console_.error(`[Auth Bridge] Failed:`, err);
+        });
+      }
     }
   });
 
