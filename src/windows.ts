@@ -68,9 +68,11 @@ export type WindowView = {
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
   omniboxVisible: boolean;
+  destroyed?: boolean;
   refresh: () => void;
   relayout: (force?: boolean) => void;
   toggleOmnibox: () => void;
+  destroy: () => void;
 } & Actions;
 
 export const focusedView: {
@@ -159,6 +161,8 @@ export async function createWindowWithToolbar(
 
   // Explicitly clear the terminal to hide build logs before first paint
   out.clearScreen();
+
+  let destroyed = false;
 
   const transparentWindowSettings = {
     transparent: true,
@@ -575,12 +579,7 @@ export async function createWindowWithToolbar(
           }).catch(err => {
             console_.error('OAuth authentication failed:', err);
           });
-          
-          // Optionally redirect the Electron window to a "Check your browser" page
-          // content.webContents.loadURL('file://...'); 
           return;
-        } else {
-          console_.error('Google OAuth detected but no clientId configured in config.js');
         }
       }
       const injection = `window.__awrit_use_firefox_spoof = ${oauthConfig.clientId ? 'false' : 'true'};\n` + mainWorldAntiDetection;
@@ -640,6 +639,7 @@ export async function createWindowWithToolbar(
       if (relayoutScheduled) return;
       relayoutScheduled = true;
       setImmediate(() => {
+        if (destroyed) return;
         relayoutScheduled = false;
         let newSize;
         try {
@@ -716,14 +716,44 @@ export async function createWindowWithToolbar(
     reload: () => {
       content.webContents.reload();
     },
+    destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      
+      // Cleanup IPC listeners
+      ipcCleanup();
+      
+      // Cleanup paint handlers and buffers
+      destructors.forEach(d => d());
+      destructors.length = 0;
+      refreshers.length = 0;
+      
+      // Remove from managed views
+      const index = managedViews.indexOf(view);
+      if (index !== -1) {
+        managedViews.splice(index, 1);
+      }
+      
+      if (focusedView.current === view) {
+        focusedView.current = null;
+      }
+      
+      // Destroy windows
+      if (!toolbar.isDestroyed()) toolbar.destroy();
+      if (!content.isDestroyed()) content.destroy();
+    }
   };
+
+  // Cleanup when window is closed
+  content.on('closed', () => view.destroy());
+  toolbar.on('closed', () => view.destroy());
 
   // Add to managed windows
   managedViews.push(view);
   focusedView.current = view;
 
   // Set up IPC for toolbar interactions
-  setupToolbarIPC(toolbar.webContents, content.webContents, view);
+  const ipcCleanup = setupToolbarIPC(toolbar.webContents, content.webContents, view);
 
   // Initial state is hidden
   toolbar.webContents.once('did-finish-load', () => {
@@ -762,58 +792,56 @@ function setupToolbarIPC(
   contentContents: Electron.WebContents,
   view: WindowView,
 ) {
-
-  ipcMain.on('toolbar:navigate-back', () => {
-    if (contentContents.navigationHistory.canGoBack()) {
-      contentContents.navigationHistory.goBack();
-    }
-  });
-
-  ipcMain.on('toolbar:navigate-forward', () => {
-    if (contentContents.navigationHistory.canGoForward()) {
-      contentContents.navigationHistory.goForward();
-    }
-  });
-
-  ipcMain.on('toolbar:navigate-refresh', () => {
-    contentContents.reload();
-  });
-
-  ipcMain.on('toolbar:navigate-to', (_event, url: string) => {
-    contentContents.loadURL(url, { userAgent: getUAForURL(url) });
-  });
-
-  ipcMain.on('toolbar:toggle-url-bar', () => {
-    view.toggleOmnibox();
-  });
-
-  ipcMain.on('toolbar:close', () => {
-    if (view.omniboxVisible) {
+  const handlers: Record<string, any> = {
+    'toolbar:navigate-back': () => {
+      if (contentContents.navigationHistory.canGoBack()) {
+        contentContents.navigationHistory.goBack();
+      }
+    },
+    'toolbar:navigate-forward': () => {
+      if (contentContents.navigationHistory.canGoForward()) {
+        contentContents.navigationHistory.goForward();
+      }
+    },
+    'toolbar:navigate-refresh': () => {
+      contentContents.reload();
+    },
+    'toolbar:navigate-to': (_event: any, url: string) => {
+      contentContents.loadURL(url, { userAgent: getUAForURL(url) });
+    },
+    'toolbar:toggle-url-bar': () => {
       view.toggleOmnibox();
-    }
-  });
+    },
+    'toolbar:close': () => {
+      if (view.omniboxVisible) {
+        view.toggleOmnibox();
+      }
+    },
+    'omnibox:escape': () => {
+      if (view.omniboxVisible) {
+        view.toggleOmnibox();
+      }
+    },
+  };
 
-  // Global escape fallback
-  ipcMain.on('omnibox:escape', () => {
-    if (view.omniboxVisible) {
-      view.toggleOmnibox();
-    }
-  });
+  for (const [channel, handler] of Object.entries(handlers)) {
+    ipcMain.on(channel, handler);
+  }
 
-  contentContents.on('did-start-loading', () => {
-    toolbarContents.send('content:loading-started');
-  });
-
-  contentContents.on('did-stop-loading', () => {
-    toolbarContents.send('content:loading-stopped');
-  });
-
-  contentContents.on('did-navigate', (_event, url) => {
+  const onLoadingStarted = () => toolbarContents.send('content:loading-started');
+  const onLoadingStopped = () => toolbarContents.send('content:loading-stopped');
+  const onDidNavigate = (_event: any, url: string) => {
     toolbarContents.send('content:url-changed', url);
-    // Re-set webContents UA for in-page navigations so navigator.userAgent
-    // matches what onBeforeSendHeaders sends (Firefox for Google, Chrome for others).
     contentContents.setUserAgent(getUAForURL(url));
-  });
+    updateNavigationState();
+  };
+  const onDidNavigateInPage = (_event: any, url: string, isMainFrame: boolean) => {
+    if (isMainFrame) {
+      toolbarContents.send('content:url-changed', url);
+      updateNavigationState();
+      contentContents.setUserAgent(getUAForURL(url));
+    }
+  };
 
   const updateNavigationState = () => {
     const navigationState = {
@@ -823,20 +851,24 @@ function setupToolbarIPC(
     toolbarContents.send('content:navigation-state-changed', navigationState);
   };
 
-  contentContents.on('did-navigate', (event, url) => {
-    toolbarContents.send('content:url-changed', url);
-    updateNavigationState();
-  });
-
-  contentContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
-    if (isMainFrame) {
-      toolbarContents.send('content:url-changed', url);
-      updateNavigationState();
-      contentContents.setUserAgent(getUAForURL(url));
-    }
-  });
-
+  contentContents.on('did-start-loading', onLoadingStarted);
+  contentContents.on('did-stop-loading', onLoadingStopped);
+  contentContents.on('did-navigate', onDidNavigate);
+  contentContents.on('did-navigate-in-page', onDidNavigateInPage);
   contentContents.on('did-start-navigation', updateNavigationState);
   contentContents.on('did-finish-load', updateNavigationState);
   contentContents.on('did-frame-finish-load', updateNavigationState);
+
+  return () => {
+    for (const [channel, handler] of Object.entries(handlers)) {
+      ipcMain.removeListener(channel, handler);
+    }
+    contentContents.off('did-start-loading', onLoadingStarted);
+    contentContents.off('did-stop-loading', onLoadingStopped);
+    contentContents.off('did-navigate', onDidNavigate);
+    contentContents.off('did-navigate-in-page', onDidNavigateInPage);
+    contentContents.off('did-start-navigation', updateNavigationState);
+    contentContents.off('did-finish-load', updateNavigationState);
+    contentContents.off('did-frame-finish-load', updateNavigationState);
+  };
 }

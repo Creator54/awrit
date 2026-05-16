@@ -29,10 +29,24 @@ pub struct DirtyRect {
 pub struct ShmGraphicBuffer {
   name: String,
   size: u32,
+  fd: Option<std::os::unix::io::RawFd>,
+  ptr: Option<std::ptr::NonNull<std::ffi::c_void>>,
 }
 
 impl ObjectFinalize for ShmGraphicBuffer {
   fn finalize(self, mut _env: Env) -> Result<()> {
+    if let Some(ptr) = self.ptr {
+      unsafe {
+        munmap(ptr, self.size as usize).ok();
+      }
+    }
+    // fd is automatically closed if we store it as a file or similar, 
+    // but here we store it as RawFd. 
+    if let Some(fd) = self.fd {
+      unsafe {
+        nix::unistd::close(fd).ok();
+      }
+    }
     // Attempt to unlink the shared memory, doesn't really matter if it fails
     let _ = shm_unlink(self.name());
     Ok(())
@@ -58,7 +72,48 @@ impl ShmGraphicBuffer {
     };
     let name = format!("/awrit_{}", significant_part);
 
-    Self { name, size }
+    Self {
+      name,
+      size,
+      fd: None,
+      ptr: None,
+    }
+  }
+
+  fn ensure_mapped(&mut self) -> napi::Result<*mut u8> {
+    if let Some(ptr) = self.ptr {
+      return Ok(ptr.as_ptr() as *mut u8);
+    }
+
+    let fd = shm_open(
+      self.name(),
+      OFlag::O_CREAT | OFlag::O_RDWR,
+      Mode::S_IRUSR | Mode::S_IWUSR,
+    )
+    .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
+
+    ftruncate(fd, self.size as i64)
+      .map_err(|e| napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e)))?;
+
+    let size = NonZeroUsize::new(self.size as usize)
+      .ok_or_else(|| napi::Error::from_reason("Size must be non-zero"))?;
+
+    let ptr = unsafe {
+      mmap(
+        None,
+        size,
+        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+        MapFlags::MAP_SHARED,
+        fd,
+        0,
+      )
+      .map_err(|e| napi::Error::from_reason(format!("Failed to mmap shared memory: {}", e)))?
+    };
+
+    self.fd = Some(fd);
+    self.ptr = Some(ptr);
+
+    Ok(ptr.as_ptr() as *mut u8)
   }
 
   /// Returns a reference to the shared memory name
@@ -74,60 +129,22 @@ impl ShmGraphicBuffer {
 
   /// Creates and truncates the shared memory segment to the specified size, filling it with zeros
   #[napi]
-  pub fn write_empty(&self) -> napi::Result<()> {
-    // Open shared memory with create flag
-    let fd = shm_open(
-      self.name(),
-      OFlag::O_CREAT | OFlag::O_RDWR,
-      Mode::S_IRUSR | Mode::S_IWUSR,
-    )
-    .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
-
-    // Truncate to desired size
-    ftruncate(fd, self.size as i64)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e)))?;
-
-    // Close the file descriptor - fd is automatically closed when dropped
+  pub fn write_empty(&mut self) -> napi::Result<()> {
+    self.ensure_mapped()?;
     Ok(())
   }
 
   /// Writes an image buffer to the shared memory at the specified dirty rectangle
   #[napi]
   pub fn write(
-    &self,
+    &mut self,
     buffer: Buffer,
     image_width: u32,
     dirty_rect: Option<DirtyRect>,
   ) -> napi::Result<()> {
-    // Open shared memory
-    let fd = shm_open(
-      self.name(),
-      OFlag::O_CREAT | OFlag::O_RDWR,
-      Mode::S_IRUSR | Mode::S_IWUSR,
-    )
-    .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
-
-    ftruncate(&fd, self.size as i64)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e)))?;
-
-    let size = NonZeroUsize::new(self.size as usize)
-      .ok_or_else(|| napi::Error::from_reason("Size must be non-zero"))?;
-
-    // Map the shared memory
-    let ptr = unsafe {
-      mmap(
-        None,
-        size,
-        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-        MapFlags::MAP_SHARED,
-        fd,
-        0,
-      )
-      .map_err(|e| napi::Error::from_reason(format!("Failed to mmap shared memory: {}", e)))?
-    };
+    let dst_ptr = self.ensure_mapped()?;
     let src_slice = buffer.as_ref();
-    let dst_slice =
-      unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, self.size as usize) };
+    let dst_slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr, self.size as usize) };
 
     match dirty_rect {
       Some(rect) => {
@@ -137,7 +154,7 @@ impl ShmGraphicBuffer {
           width: rect.width,
           height: rect.height,
         };
-        if !bgra_to_rgba::bgra_to_rgba_rect(src_slice, dst_slice, image_width, bgra_rect) {
+        if !bgra_to_rgba::bgra_to_rgba_inplace(src_slice, dst_slice, image_width, bgra_rect) {
           return Err(napi::Error::from_reason("Failed to convert BGRA to RGBA"));
         }
       }
@@ -146,11 +163,6 @@ impl ShmGraphicBuffer {
           return Err(napi::Error::from_reason("Failed to convert BGRA to RGBA"));
         }
       }
-    }
-
-    unsafe {
-      munmap(ptr, size.get())
-        .map_err(|e| napi::Error::from_reason(format!("Failed to munmap shared memory: {}", e)))?;
     }
 
     Ok(())

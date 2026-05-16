@@ -175,42 +175,13 @@ app.commandLine.appendSwitch('disable-logging');
 // Prevent sysctlbyname crash: https://github.com/electron/electron/issues/45653#issuecomment-2663510200
 // Prevent navigator.webdriver = true and other automation indicators
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-
-// ===========================================
-// Production Chrome configuration
-// ===========================================
+app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin');
 
 // Enable remote debugging port for programmatic control (needed for MCP)
 app.commandLine.appendSwitch('remote-debugging-port', '9222');
 
-// Consolidated enable-features (must be a single call — appendSwitch overwrites)
-// MOVED TO LINE 212 TO AVOID CONFLICTS
-
-// Consolidated disable-features (must be a single call — appendSwitch overwrites)
-app.commandLine.appendSwitch('disable-features',
-  'UseBrowserCalculatedOrigin,HeadlessBrowser,TranslateUI'
-);
-
-// Enable Chrome production features
-app.commandLine.appendSwitch('enable-component-update');
-app.commandLine.appendSwitch('enable-crash-reporter');
-app.commandLine.appendSwitch('enable-client-side-phishing-detection');
-
-// Set user data directory to look like real Chrome
-app.commandLine.appendSwitch('user-data-dir', path.join(process.env.HOME || '/tmp', '.config', 'awrit-chrome-profile'));
-
-// Set Chrome's language (real Chrome uses system language)
-app.commandLine.appendSwitch('lang', 'en-US');
-
-// Disable DevTools-specific logging (real Chrome doesn't log DevTools)
-app.commandLine.appendSwitch('silent-debugger-extension-api');
-
-// Force Chrome's internal dark mode engine
-app.commandLine.appendSwitch('force-dark-mode');
-app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark,NetworkService,NetworkServiceInProcess,TrustedDomainsForApps,SafeBrowsingProtectionLevel1,PdfUnseasoned');
-
-// Make Chrome look like it's in production mode (not development)
-app.commandLine.appendSwitch('no-experiments');
+// Disable features that trigger Google detection
+app.commandLine.appendSwitch('disable-features', 'HeadlessBrowser');
 
 app.whenReady().then(async () => {
   // Force dark mode for consistency with awrit UI

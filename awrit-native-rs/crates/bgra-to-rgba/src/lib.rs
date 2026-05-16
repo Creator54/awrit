@@ -41,6 +41,58 @@ pub fn bgra_to_rgba(src: &[u8], dst: &mut [u8]) -> bool {
 }
 
 #[inline]
+pub fn bgra_to_rgba_inplace(src: &[u8], dst: &mut [u8], stride: u32, rect: Rect) -> bool {
+  // Validate input dimensions
+  if rect.x + rect.width > stride {
+    return false;
+  }
+  let total_height = rect.y + rect.height;
+  if src.len() < (stride * total_height) as usize * BYTES_PER_PIXEL {
+    return false;
+  }
+  if dst.len() < (stride * total_height) as usize * BYTES_PER_PIXEL {
+    return false;
+  }
+
+  let offset = (rect.y * stride + rect.x) as usize * BYTES_PER_PIXEL;
+
+  // For large buffers, use parallel processing
+  if rect.width * rect.height > (CHUNK_SIZE / BYTES_PER_PIXEL) as u32 {
+    use rayon::prelude::*;
+    let chunk_height = (CHUNK_SIZE / (rect.width as usize * BYTES_PER_PIXEL)).max(1);
+    
+    (0..rect.height).into_par_iter().step_by(chunk_height as usize).for_each(|start_y| {
+      let height = (rect.height - start_y).min(chunk_height as u32);
+      let row_offset = offset + (start_y * stride) as usize * BYTES_PER_PIXEL;
+
+      unsafe {
+        bgra_to_rgba_rect_chunk(
+          src,
+          dst,
+          stride,
+          Rect {
+            x: rect.x,
+            y: 0,
+            width: rect.width,
+            height: height,
+          },
+          row_offset,
+          Some(stride),
+          row_offset,
+        );
+      }
+    });
+    return true;
+  }
+
+  unsafe {
+    bgra_to_rgba_rect_chunk(src, dst, stride, rect, offset, Some(stride), offset);
+  }
+
+  return true;
+}
+
+#[inline]
 pub fn bgra_to_rgba_rect(src: &[u8], dst: &mut [u8], image_width: u32, src_rect: Rect) -> bool {
   // Validate input dimensions
   if src_rect.x + src_rect.width > image_width {
@@ -84,6 +136,8 @@ pub fn bgra_to_rgba_rect(src: &[u8], dst: &mut [u8], image_width: u32, src_rect:
                 height: height as u32,
               },
               chunk_src_start,
+              None,
+              0,
             );
           }
         }
@@ -93,7 +147,7 @@ pub fn bgra_to_rgba_rect(src: &[u8], dst: &mut [u8], image_width: u32, src_rect:
 
   // Process the entire rect at once for small buffers
   unsafe {
-    bgra_to_rgba_rect_chunk(src, dst, image_width, src_rect, src_start);
+    bgra_to_rgba_rect_chunk(src, dst, image_width, src_rect, src_start, None, 0);
   }
 
   return true;
@@ -248,6 +302,8 @@ unsafe fn bgra_to_rgba_rect_chunk(
   image_width: u32,
   src_rect: Rect,
   src_start: usize,
+  dst_stride_pixels: Option<u32>,
+  dst_start: usize,
 ) { unsafe {
   const ALIGN_SIZE: usize = 32;
   let pixels_per_simd = ALIGN_SIZE / BYTES_PER_PIXEL;
@@ -263,14 +319,14 @@ unsafe fn bgra_to_rgba_rect_chunk(
   let rect_width = src_rect.width as usize;
   let rect_height = src_rect.height as usize;
   let src_stride = image_width as usize * BYTES_PER_PIXEL;
-  let dst_stride = rect_width * BYTES_PER_PIXEL;
+  let dst_stride = dst_stride_pixels.unwrap_or(src_rect.width) as usize * BYTES_PER_PIXEL;
 
   // Process full SIMD width strips
   let simd_width = (rect_width / pixels_per_simd) * pixels_per_simd;
 
   for y in 0..rect_height {
     let src_row = src_start + y * src_stride;
-    let dst_row = y * dst_stride;
+    let dst_row = dst_start + y * dst_stride;
 
     // Prefetch next row if not at the last row
     if y + 1 < rect_height {
@@ -325,6 +381,8 @@ unsafe fn bgra_to_rgba_rect_chunk(
   image_width: u32,
   src_rect: Rect,
   src_start: usize,
+  dst_stride_pixels: Option<u32>,
+  dst_start: usize,
 ) { unsafe {
   const ALIGN_SIZE: usize = 16;
   let pixels_per_simd = ALIGN_SIZE / BYTES_PER_PIXEL;
@@ -334,14 +392,14 @@ unsafe fn bgra_to_rgba_rect_chunk(
   let rect_width = src_rect.width as usize;
   let rect_height = src_rect.height as usize;
   let src_stride = image_width as usize * BYTES_PER_PIXEL;
-  let dst_stride = rect_width * BYTES_PER_PIXEL;
+  let dst_stride = dst_stride_pixels.unwrap_or(src_rect.width) as usize * BYTES_PER_PIXEL;
 
   // Process full SIMD width strips
   let simd_width = (rect_width / pixels_per_simd) * pixels_per_simd;
 
   for y in 0..rect_height {
     let src_row = src_start + y * src_stride;
-    let dst_row = y * dst_stride;
+    let dst_row = dst_start + y * dst_stride;
 
     // Prefetch next row if not at the last row
     if y + 1 < rect_height {

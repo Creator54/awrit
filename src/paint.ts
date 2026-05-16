@@ -66,7 +66,7 @@ export function registerPaintedContent(
     },
   };
 
-  async function paint(_: any, _dirty: Rectangle, image: NativeImage) {
+  async function paint(_: any, dirty: Rectangle, image: NativeImage) {
     if (destroyed) return;
     const imageSize = image.getSize();
     if (imageSize.width === 0 || imageSize.height === 0) return;
@@ -77,7 +77,7 @@ export function registerPaintedContent(
       result.size = imageBufferSize;
     }
     if (options['debug-paint']) {
-      console_.error('paint', result.buffer.nameBase64, image.getSize());
+      console_.error('paint', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
     }
     if (options['no-paint']) {
       return;
@@ -92,7 +92,8 @@ export function registerPaintedContent(
     }
 
     const buffer = image.toBitmap();
-    result.buffer.write(buffer, imageSize.width * 4);
+    result.buffer.write(buffer, imageSize.width);
+
     setModes([Mode.pendingUpdate], true);
     lastImageSize = imageSize;
     containerFrame
@@ -133,7 +134,7 @@ export function registerPaintedContentFallback(
     },
   };
 
-  async function paint(_: any, _dirty: Rectangle, image: NativeImage) {
+  async function paint(_: any, dirty: Rectangle, image: NativeImage) {
     const imageSize = image.getSize();
     if (imageSize.width === 0 || imageSize.height === 0) return;
 
@@ -155,7 +156,10 @@ export function registerPaintedContentFallback(
       replace = false;
       const buffer = new ShmGraphicBuffer(imageBufferSize);
       paintedImage?.free();
-      buffer.write(image.toBitmap(), imageSize.width * 4);
+      
+      const bitmap = image.toBitmap();
+      buffer.write(bitmap, imageSize.width * 4);
+      
       setModes([Mode.pendingUpdate], true);
       paintedImage = paintImage(buffer, imageSize, position);
       setModes([Mode.pendingUpdate], false);
@@ -164,15 +168,19 @@ export function registerPaintedContentFallback(
       result.size = imageBufferSize;
     }
     if (options['debug-paint']) {
-      console_.error('paint', result.buffer.nameBase64, image.getSize());
+      console_.error('paint (fallback)', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
     }
     if (options['no-paint']) {
       return;
     }
 
     if (replace && paintedImage) {
+      const bitmap = image.toBitmap();
+      result.buffer.write(bitmap, imageSize.width);
+      
       setModes([Mode.pendingUpdate], true);
-      paintedImage.replace(image.toBitmap());
+      // Fallback mode replace() just triggers a redraw in terminal
+      paintedImage.replace(bitmap);
       setModes([Mode.pendingUpdate], false);
     }
   }
