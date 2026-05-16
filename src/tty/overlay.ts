@@ -7,6 +7,12 @@ const { stdout } = process;
 
 let overlayId = 1000; // Start high to avoid collision
 
+// Cache arrow buffers — they're always the same 60×60 image.
+// Avoids per-pixel Math.sqrt() computation on every swipe gesture.
+const ARROW_SIZE: Size = { width: 60, height: 60 };
+let cachedLeftArrow: ShmGraphicBuffer | null = null;
+let cachedRightArrow: ShmGraphicBuffer | null = null;
+
 function createArrowBuffer(direction: 'left' | 'right', size: Size): ShmGraphicBuffer {
   const buffer = new ShmGraphicBuffer(size.width * size.height * 4);
   const data = new Uint8ClampedArray(size.width * size.height * 4);
@@ -14,6 +20,8 @@ function createArrowBuffer(direction: 'left' | 'right', size: Size): ShmGraphicB
   const centerX = size.width / 2;
   const centerY = size.height / 2;
   const radius = Math.min(centerX, centerY) - 2;
+  // Precompute radius squared to avoid Math.sqrt per pixel
+  const radiusSq = radius * radius;
 
   for (let y = 0; y < size.height; y++) {
     for (let x = 0; x < size.width; x++) {
@@ -21,9 +29,9 @@ function createArrowBuffer(direction: 'left' | 'right', size: Size): ShmGraphicB
       
       const dx = x - centerX;
       const dy = y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const distSq = dx * dx + dy * dy;
       
-      if (dist <= radius) {
+      if (distSq <= radiusSq) {
         // Background circle (semi-transparent dark)
         data[idx] = 20;     // R
         data[idx + 1] = 20; // G
@@ -58,11 +66,18 @@ function createArrowBuffer(direction: 'left' | 'right', size: Size): ShmGraphicB
   return buffer;
 }
 
-let currentOverlayId: number | null = null;
+function getArrowBuffer(direction: 'left' | 'right'): ShmGraphicBuffer {
+  if (direction === 'left') {
+    if (!cachedLeftArrow) cachedLeftArrow = createArrowBuffer('left', ARROW_SIZE);
+    return cachedLeftArrow;
+  } else {
+    if (!cachedRightArrow) cachedRightArrow = createArrowBuffer('right', ARROW_SIZE);
+    return cachedRightArrow;
+  }
+}
 
 export function showNavigationOverlay(direction: 'left' | 'right', windowSize: any) {
-  const size = { width: 60, height: 60 };
-  const buffer = createArrowBuffer(direction, size);
+  const buffer = getArrowBuffer(direction);
   const id = overlayId++;
   
   const x = direction === 'left' ? 40 : windowSize.width - 100;
@@ -82,7 +97,7 @@ export function showNavigationOverlay(direction: 'left' | 'right', windowSize: a
   // f=32: RGBA, t=s: SHM
   // i: image ID, C=1: Do not move cursor
   // X, Y: Pixel offsets from the top-left of the current cell
-  stdout.write(GFX`a=T,f=32,t=s,i=${id},C=1,s=${size.width},v=${size.height},X=${offsetX},Y=${offsetY};${buffer.nameBase64}`);
+  stdout.write(GFX`a=T,f=32,t=s,i=${id},C=1,s=${ARROW_SIZE.width},v=${ARROW_SIZE.height},X=${offsetX},Y=${offsetY};${buffer.nameBase64}`);
   
   setTimeout(() => {
     // a=d: Delete image by ID
