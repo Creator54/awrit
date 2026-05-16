@@ -10,6 +10,8 @@ use nix::sys::mman::{mmap, munmap, shm_open, shm_unlink, MapFlags, ProtFlags};
 use nix::sys::stat::Mode;
 use nix::unistd::ftruncate;
 use std::num::NonZeroUsize;
+use std::os::fd::IntoRawFd;
+use std::os::unix::io::RawFd;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod term;
@@ -95,7 +97,7 @@ impl ShmGraphicBuffer {
     )
     .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
 
-    ftruncate(fd, self.size as i64)
+    ftruncate(&fd, self.size as i64)
       .map_err(|e| napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e)))?;
 
     let size = NonZeroUsize::new(self.size as usize)
@@ -107,13 +109,13 @@ impl ShmGraphicBuffer {
         size,
         ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
         MapFlags::MAP_SHARED,
-        fd,
+        &fd,
         0,
       )
       .map_err(|e| napi::Error::from_reason(format!("Failed to mmap shared memory: {}", e)))?
     };
 
-    self.fd = Some(fd);
+    self.fd = Some(fd.into_raw_fd());
     self.ptr = Some(ptr);
 
     Ok(ptr.as_ptr() as *mut u8)
@@ -157,6 +159,9 @@ impl ShmGraphicBuffer {
           width: rect.width,
           height: rect.height,
         };
+        // For dirty rect updates, we need to write at the correct offset in dst
+        // bgra_to_rgba_inplace handles this correctly - it reads from src at rect position
+        // and writes to dst at the same position (both use full image stride)
         if !bgra_to_rgba::bgra_to_rgba_inplace(src_slice, dst_slice, image_width, bgra_rect) {
           return Err(napi::Error::from_reason("Failed to convert BGRA to RGBA"));
         }

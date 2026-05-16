@@ -66,14 +66,17 @@ export interface TermEscape {
   text: string
 }
 
-export type TermEvent =
-  { eventType: 'key', keyEvent: KeyEvent } |
-  { eventType: 'mouse', mouseEvent: MouseEvent } |
-  { eventType: 'focus', focusGained?: boolean, focusLost?: boolean } |
-  { eventType: 'resize', resize: TermResize } |
-  { eventType: 'paste', paste: string } |
-  { eventType: 'escape', escape: TermEscape } |
-  { eventType: 'graphics', graphics: KittyGraphics }
+export interface TermEvent {
+  eventType: 'key' | 'mouse' | 'focus' | 'resize' | 'paste' | 'escape' | 'graphics'
+  keyEvent?: KeyEvent
+  mouseEvent?: MouseEvent
+  focusGained?: boolean
+  focusLost?: boolean
+  resize?: TermResize
+  paste?: string
+  escape?: TermEscape
+  graphics?: KittyGraphics
+}
 
 export interface TermResize {
   columns: number

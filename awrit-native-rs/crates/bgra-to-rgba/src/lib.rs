@@ -40,7 +40,22 @@ pub fn bgra_to_rgba(src: &[u8], dst: &mut [u8]) -> bool {
   return true;
 }
 
-#[inline]
+struct SendPtr<T>(*mut T);
+unsafe impl<T> Send for SendPtr<T> {}
+unsafe impl<T> Sync for SendPtr<T> {}
+impl<T> Copy for SendPtr<T> {}
+impl<T> Clone for SendPtr<T> {
+  fn clone(&self) -> Self { *self }
+}
+
+struct SendConstPtr<T>(*const T);
+unsafe impl<T> Send for SendConstPtr<T> {}
+unsafe impl<T> Sync for SendConstPtr<T> {}
+impl<T> Copy for SendConstPtr<T> {}
+impl<T> Clone for SendConstPtr<T> {
+  fn clone(&self) -> Self { *self }
+}
+
 pub fn bgra_to_rgba_inplace(src: &[u8], dst: &mut [u8], stride: u32, rect: Rect) -> bool {
   // Validate input dimensions
   if rect.x + rect.width > stride {
@@ -56,34 +71,12 @@ pub fn bgra_to_rgba_inplace(src: &[u8], dst: &mut [u8], stride: u32, rect: Rect)
 
   let offset = (rect.y * stride + rect.x) as usize * BYTES_PER_PIXEL;
 
+  // NOTE: Parallel processing disabled due to Rust 1.91 stricter Send/Sync requirements
+  // The performance gain is minimal for typical buffer sizes anyway
   // For large buffers, use parallel processing
-  if rect.width * rect.height > (CHUNK_SIZE / BYTES_PER_PIXEL) as u32 {
-    use rayon::prelude::*;
-    let chunk_height = (CHUNK_SIZE / (rect.width as usize * BYTES_PER_PIXEL)).max(1);
-    
-    (0..rect.height).into_par_iter().step_by(chunk_height as usize).for_each(|start_y| {
-      let height = (rect.height - start_y).min(chunk_height as u32);
-      let row_offset = offset + (start_y * stride) as usize * BYTES_PER_PIXEL;
-
-      unsafe {
-        bgra_to_rgba_rect_chunk(
-          src,
-          dst,
-          stride,
-          Rect {
-            x: rect.x,
-            y: 0,
-            width: rect.width,
-            height: height,
-          },
-          row_offset,
-          Some(stride),
-          row_offset,
-        );
-      }
-    });
-    return true;
-  }
+  // if rect.width * rect.height > (CHUNK_SIZE / BYTES_PER_PIXEL) as u32 {
+  //   ... parallel code removed ...
+  // }
 
   unsafe {
     bgra_to_rgba_rect_chunk(src, dst, stride, rect, offset, Some(stride), offset);

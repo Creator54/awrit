@@ -11,7 +11,7 @@ if (!options.dev) {
   console.error = (...args) => logStream.write(args.join(' ') + '\n');
 }
 
-
+out.setup();
 
 import { app, dialog, ipcMain, nativeTheme, Menu } from 'electron';
 import {

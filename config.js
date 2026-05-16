@@ -10,7 +10,7 @@ const urlBar = {
   /** Show URL bar by default on startup */
   defaultVisible: true,
   /** Keybind to toggle URL bar visibility */
-  toggleKey: '<A-u>',
+  toggleKey: '<C-l>',
 };
 
 /** Profile Configuration
@@ -339,28 +339,9 @@ function quit() {
   process.emit('SIGINT');
 }
 
-/** @type {KeyBindingAction} */
-let _urlBarHidden = false;
-function toggleUrlBar({ view }) {
-  _urlBarHidden = !_urlBarHidden;
-  view.toolbar.webContents.send('toolbar:toggle-url-bar');
-  view.toolbarNode.height = _urlBarHidden ? { value: 0, unit: 'px' } : { value: 40, unit: 'px' };
-  view.relayout();
-}
-
 const config = {
   homepage,
-  keybindings: {
-    ...keybindings,
-    linux: {
-      ...keybindings.linux,
-      '<A-u>': toggleUrlBar,
-    },
-    mac: {
-      ...keybindings.mac,
-      '<M-u>': toggleUrlBar,
-    },
-  },
+  keybindings,
   urlBar,
   profile,
   debugPort,

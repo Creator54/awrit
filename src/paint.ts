@@ -72,7 +72,6 @@ export function registerPaintedContent(
     if (imageSize.width === 0 || imageSize.height === 0) return;
 
     const imageBufferSize = imageSize.width * imageSize.height * 4;
-    let isNewBuffer = false;
     
     if (result.buffer == null || (result.size != null && imageBufferSize !== result.size)) {
       if (options['debug-paint'] && result.buffer) {
@@ -80,16 +79,13 @@ export function registerPaintedContent(
       }
       result.buffer = new ShmGraphicBuffer(imageBufferSize);
       result.size = imageBufferSize;
-      isNewBuffer = true;
     }
     if (options['debug-paint']) {
       console_.error('paint', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
     }
 
     const buffer = image.toBitmap();
-    // Only pass dirty rect if we are updating an existing buffer. 
-    // New buffers need the entire frame converted to fill them.
-    result.buffer.write(buffer, imageSize.width, isNewBuffer ? undefined : dirty);
+    result.buffer.write(buffer, imageSize.width);
 
     startBatch();
     try {
