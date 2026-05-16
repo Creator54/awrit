@@ -11,6 +11,11 @@ let horizontalScrollAccumulator = 0;
 let lastNavigationTime = 0;
 let lastScrollTime = 0;
 
+let lastSentX = -1;
+let lastSentY = -1;
+let lastSentView: any = null;
+let lastSentMods = '';
+
 export function setCellSize(_width: number, _height: number) {}
 
 export function setCellPadding(_x: number, _y: number) {}
@@ -109,6 +114,22 @@ export function handleInput(evt: TermEvent) {
       // Convert from terminal pixels to CSS pixels relative to the target area
       const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);
       const adjustedY = Math.floor((rawY - targetNode.deviceLayout.y) / dpr);
+
+      if (kind === 'mouseMove') {
+        const mods = (modifiers || []).join(',');
+        if (
+          view === lastSentView &&
+          adjustedX === lastSentX &&
+          adjustedY === lastSentY &&
+          mods === lastSentMods
+        ) {
+          return;
+        }
+        lastSentX = adjustedX;
+        lastSentY = adjustedY;
+        lastSentView = view;
+        lastSentMods = mods;
+      }
 
       if (kind === 'scrollUp' || kind === 'scrollDown') {
         view.content.webContents.sendInputEvent({

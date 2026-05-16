@@ -5,7 +5,7 @@ use std::arch::x86_64::*;
 use std::arch::aarch64::*;
 
 const BYTES_PER_PIXEL: usize = 4;
-const CHUNK_SIZE: usize = BYTES_PER_PIXEL * 1024 * 1024;
+const CHUNK_SIZE: usize = BYTES_PER_PIXEL * 4096 * 1024; // 16MB chunks
 
 #[derive(Copy, Clone)]
 pub struct Rect {

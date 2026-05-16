@@ -246,7 +246,7 @@ export async function createWindowWithToolbar(
       // Content layer (z=0)
       const contentBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
       const opaqueBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 255]));
-      contentBuffer.write(opaqueBlack, size.width * 4);
+      contentBuffer.write(opaqueBlack, size.width);
       out.placeCursor({ x: 0, y: 0 });
       const contentFrame = paintInitialFrame(contentBuffer, size, { z: 0 });
       const cRef = registerPaintedContent(contentFrame, content, contentNode);
@@ -254,7 +254,7 @@ export async function createWindowWithToolbar(
       // Toolbar layer (z=1)
       const toolbarBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
       const transparentBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 0]));
-      toolbarBuffer.write(transparentBlack, size.width * 4);
+      toolbarBuffer.write(transparentBlack, size.width);
       out.placeCursor({ x: 0, y: 0 });
       const toolbarFrame = paintInitialFrame(toolbarBuffer, size, { z: 1 });
       const tRef = registerPaintedContent(toolbarFrame, toolbar, toolbarNode);

@@ -76,10 +76,17 @@ export enum Mode {
   pendingUpdate = 2026,
 }
 
+const modeCache = new Map<string, string>();
+
 export const setModes = (modes: Mode[], enabled: boolean) => {
-  let buf = '';
-  for (const mode of modes) {
-    buf += CSI`${MODE}${enabled ? mode + 'h' : mode + 'l'}`;
+  const key = `${modes.join(',')}-${enabled}`;
+  let buf = modeCache.get(key);
+  if (!buf) {
+    buf = '';
+    for (const mode of modes) {
+      buf += CSI`${MODE}${enabled ? mode + 'h' : mode + 'l'}`;
+    }
+    modeCache.set(key, buf);
   }
   write(buf);
 };

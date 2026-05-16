@@ -72,23 +72,15 @@ export function registerPaintedContent(
     if (imageSize.width === 0 || imageSize.height === 0) return;
 
     const imageBufferSize = imageSize.width * imageSize.height * 4;
-    if (result.buffer == null) {
+    if (result.buffer == null || (result.size != null && imageBufferSize !== result.size)) {
+      if (options['debug-paint'] && result.buffer) {
+        console_.error('replace buffer', result.buffer.nameBase64, result.size, imageBufferSize);
+      }
       result.buffer = new ShmGraphicBuffer(imageBufferSize);
       result.size = imageBufferSize;
     }
     if (options['debug-paint']) {
       console_.error('paint', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
-    }
-    if (options['no-paint']) {
-      return;
-    }
-
-    if (result.size != null && imageBufferSize !== result.size) {
-      if (options['debug-paint']) {
-        console_.error('replace buffer', result.buffer.nameBase64, result.size, imageBufferSize);
-      }
-      result.buffer = new ShmGraphicBuffer(imageBufferSize);
-      result.size = imageBufferSize;
     }
 
     const buffer = image.toBitmap();
