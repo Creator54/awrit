@@ -41,10 +41,13 @@ import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
 
 let homepage = 'https://github.com/chase/awrit';
-
+let urlBarDefaultVisible = false;
 
 function loadConfig(config: typeof import('../config.js')) {
   if (config.homepage) homepage = config.homepage;
+  if (config.urlBar && typeof config.urlBar.defaultVisible === 'boolean') {
+    urlBarDefaultVisible = config.urlBar.defaultVisible;
+  }
   if (config.keybindings) {
     // Create a clean keybindings object for loadKeyBindings
     const bindings: Record<string, any> = {};
@@ -65,7 +68,8 @@ function loadConfig(config: typeof import('../config.js')) {
       }
     }
     // Add default system keybindings
-    bindings['<C-l>'] = ({ view }: { view?: WindowView }) => view?.toggleOmnibox();
+    const toggleKey = config.urlBar?.toggleKey || '<C-l>';
+    bindings[toggleKey] = ({ view }: { view?: WindowView }) => view?.toggleOmnibox();
 
     loadKeyBindings({ keybindings: bindings });
   }
@@ -260,7 +264,9 @@ app.whenReady().then(async () => {
     size = { ...size, width: 800, height: 600 };
   }
   
-  const window = await createWindowWithToolbar(size, INITIAL_URL);
+  const window = await createWindowWithToolbar(size, INITIAL_URL, {
+    urlBarVisible: urlBarDefaultVisible
+  });
 
   // Handle deep-linking (e.g. awrit://auth-callback)
   app.on('open-url', async (_event, url) => {

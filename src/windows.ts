@@ -113,6 +113,7 @@ export const managedViews: WindowView[] = [];
 export async function createWindowWithToolbar(
   size: { width: number; height: number },
   initialUrl = 'https://github.com/chase/awrit',
+  windowOptions: { urlBarVisible?: boolean } = {},
 ): Promise<WindowView> {
   const layoutContainer = layout(
     size.width,
@@ -126,7 +127,8 @@ export async function createWindowWithToolbar(
     getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
   );
 
-  let omniboxVisible = false;
+  let omniboxVisible = windowOptions.urlBarVisible ?? false;
+  let toolbarLoaded = false;
 
   const toolbarNode = row({ width: px(size.width), height: px(size.height), tag: 'omnibox' });
   const contentNode = row({ width: px(size.width), height: px(size.height), tag: 'content' });
@@ -224,14 +226,21 @@ export async function createWindowWithToolbar(
 
   registerPaints(padSize(size));
 
-  if (options.dev) {
-    toolbar.webContents.loadURL(`http://localhost:${TOOLBAR_PORT}`);
-  } else {
-    resetForFrameQuirk(toolbar.webContents);
-    toolbar.webContents.loadFile('../dist/toolbar/index.html');
+  function loadToolbarContent() {
+    if (toolbarLoaded) return;
+    toolbarLoaded = true;
+    if (options.dev) {
+      toolbar.webContents.loadURL(`http://localhost:${TOOLBAR_PORT}`);
+    } else {
+      resetForFrameQuirk(toolbar.webContents);
+      toolbar.webContents.loadFile('../dist/toolbar/index.html');
+    }
+    toolbar.webContents.invalidate();
   }
 
-  toolbar.webContents.invalidate();
+  if (omniboxVisible) {
+    loadToolbarContent();
+  }
 
   extensionsPromise.then((extensions) => {
     if (extensions) extensions.addTab(content.webContents, content);
@@ -352,13 +361,25 @@ export async function createWindowWithToolbar(
     },
     toggleOmnibox() {
       this.omniboxVisible = !this.omniboxVisible;
+      
+      if (this.omniboxVisible) {
+        loadToolbarContent();
+      }
+
       const sendSignal = () => {
         if (!this.toolbar.webContents.isLoading()) {
           this.toolbar.webContents.send('omnibox:set-visible', this.omniboxVisible);
         }
       };
-      sendSignal();
-      setTimeout(sendSignal, 100);
+      
+      // Wait for load to finish if we just loaded it
+      if (this.omniboxVisible && this.toolbar.webContents.isLoading()) {
+        this.toolbar.webContents.once('did-finish-load', sendSignal);
+      } else {
+        sendSignal();
+        setTimeout(sendSignal, 100);
+      }
+
       this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible);
       if (this.omniboxVisible) this.toolbar.focus();
       else this.content.focus();
@@ -440,8 +461,11 @@ export async function createWindowWithToolbar(
   ipcMain.on('awrit:open-external', onOpenExternal);
   ipcMain.on('awrit:request-secure-login', onRequestSecureLogin);
 
-  toolbar.webContents.once('did-finish-load', () => {
-    toolbar.webContents.send('omnibox:set-visible', false);
+  toolbar.webContents.on('did-finish-load', () => {
+    // Only force hidden if we loaded it in the background or during toggle off
+    if (!view.omniboxVisible) {
+      toolbar.webContents.send('omnibox:set-visible', false);
+    }
   });
 
   return view;
