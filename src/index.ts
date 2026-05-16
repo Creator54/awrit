@@ -91,24 +91,48 @@ const CONFIG_PATH = '../config.js';
 const CONFIG_PATH_RESOLVED = path.resolve(__dirname, CONFIG_PATH);
 loadConfig(require(CONFIG_PATH_RESOLVED));
 
-fs.watchFile(CONFIG_PATH_RESOLVED, { interval: 200 }, (curr, prev) => {
-  if (curr.mtime <= prev.mtime) return;
-  const oldConfig = require(CONFIG_PATH_RESOLVED);
-  require.cache[CONFIG_PATH_RESOLVED] = undefined;
+// Watch config file for changes using inotify (event-driven, zero CPU when idle)
+// instead of fs.watchFile which polls every 200ms
+let configReloadTimeout: NodeJS.Timeout | null = null;
+try {
+  fs.watch(CONFIG_PATH_RESOLVED, (eventType) => {
+    if (eventType !== 'change') return;
+    // Debounce: editors often trigger multiple change events per save
+    if (configReloadTimeout) clearTimeout(configReloadTimeout);
+    configReloadTimeout = setTimeout(() => {
+      configReloadTimeout = null;
+      const oldConfig = require(CONFIG_PATH_RESOLVED);
+      require.cache[CONFIG_PATH_RESOLVED] = undefined;
 
-  try {
-    const newConfig = require(CONFIG_PATH_RESOLVED);
-    loadConfig(newConfig);
-  } catch (e) {
-    console_.error('Error loading config:', e);
-    // Restore old config if new one fails
+      try {
+        const newConfig = require(CONFIG_PATH_RESOLVED);
+        loadConfig(newConfig);
+      } catch (e) {
+        console_.error('Error loading config:', e);
+        // Restore old config if new one fails
+        try {
+          loadConfig(oldConfig);
+        } catch (e) {
+          console_.error('Error restoring old config:', e);
+        }
+      }
+    }, 300);
+  });
+} catch (e) {
+  // Fallback to polling if fs.watch is not available (e.g., NFS mounts)
+  fs.watchFile(CONFIG_PATH_RESOLVED, { interval: 1000 }, (curr, prev) => {
+    if (curr.mtime <= prev.mtime) return;
+    const oldConfig = require(CONFIG_PATH_RESOLVED);
+    require.cache[CONFIG_PATH_RESOLVED] = undefined;
     try {
-      loadConfig(oldConfig);
+      const newConfig = require(CONFIG_PATH_RESOLVED);
+      loadConfig(newConfig);
     } catch (e) {
-      console_.error('Error restoring old config:', e);
+      console_.error('Error loading config:', e);
+      try { loadConfig(oldConfig); } catch (e) { console_.error('Error restoring old config:', e); }
     }
-  }
-});
+  });
+}
 
 // Don't show a dialog box on uncaught errors
 dialog.showErrorBox = (title, content) => {
