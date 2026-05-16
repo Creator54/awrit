@@ -31,7 +31,8 @@ import {
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
 import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
-import { getWindowSize as rawGetWindowSize, ShmGraphicBuffer } from 'awrit-native-rs';
+import { getWindowSize as rawGetWindowSize, ShmGraphicBuffer, type WindowSize } from 'awrit-native-rs';
+import { getAllKeyBindings } from './keybindings';
 
 export function getWindowSize() {
   try {
@@ -65,10 +66,14 @@ export type WindowView = {
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
   omniboxVisible: boolean;
+  designMode: boolean;
+  keyHelpVisible: boolean;
   destroyed?: boolean;
   refresh: () => void;
   relayout: (force?: boolean) => void;
   toggleOmnibox: () => void;
+  toggleDesignMode: () => void;
+  toggleKeyHelp: () => void;
   destroy: () => void;
 } & Actions;
 
@@ -124,7 +129,7 @@ export async function createWindowWithToolbar(
     getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor,
   );
 
-  let omniboxVisible = windowOptions.urlBarVisible ?? false;
+  const omniboxVisible = windowOptions.urlBarVisible ?? false;
   let toolbarLoaded = false;
 
   const toolbarNode = row({ width: px(size.width), height: px(size.height), tag: 'omnibox' });
@@ -194,7 +199,7 @@ export async function createWindowWithToolbar(
   const refreshers: Array<() => void> = [];
 
   function registerPaints(size: WindowDimensions) {
-    destructors.forEach((d) => d());
+    destructors.forEach((d) => { d(); });
     destructors.length = 0;
     refreshers.length = 0;
 
@@ -260,6 +265,24 @@ export async function createWindowWithToolbar(
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
+  // @ts-expect-error - monkey patch for focus management
+  toolbar.focusOnWebView = () => {
+    focusedView.current = view;
+    view.focusedContent = toolbar.webContents;
+    toolbar.webContents.focus();
+  };
+  // @ts-expect-error
+  content.focusOnWebView = () => {
+    focusedView.current = view;
+    view.focusedContent = content.webContents;
+    content.webContents.focus();
+  };
+
+  // @ts-expect-error
+  toolbar.blurWebView = () => {};
+  // @ts-expect-error
+  content.blurWebView = () => {};
+
   // Handle new window requests transparently
   const handleNewWindow = ({ url }: { url: string }) => {
     console_.log('[Navigation] Intercepted popup request, navigating main frame:', url);
@@ -323,8 +346,10 @@ export async function createWindowWithToolbar(
     toolbarNode,
     contentNode,
     omniboxVisible,
+    designMode: !!options.design,
+    keyHelpVisible: false,
     refresh() {
-      refreshers.forEach((r) => r());
+      refreshers.forEach((r) => { r(); });
     },
     relayout(force = false) {
       if (relayoutScheduled) return;
@@ -332,7 +357,7 @@ export async function createWindowWithToolbar(
       setImmediate(() => {
         if (destroyed) return;
         relayoutScheduled = false;
-        let newSize;
+        let newSize: WindowSize;
         try {
           newSize = getWindowSize();
         } catch (e) {
@@ -381,9 +406,55 @@ export async function createWindowWithToolbar(
         setTimeout(sendSignal, 100);
       }
 
-      this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible);
-      if (this.omniboxVisible) this.toolbar.focus();
-      else this.content.focus();
+      this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible && !this.keyHelpVisible);
+      if (this.omniboxVisible) {
+        // @ts-expect-error
+        this.toolbar.focusOnWebView();
+        this.toolbar.focus();
+      } else {
+        // @ts-expect-error
+        this.content.focusOnWebView();
+        this.content.focus();
+      }
+    },
+    toggleDesignMode() {
+      this.designMode = !this.designMode;
+      console_.log(`[Design Mode] ${this.designMode ? 'ENABLED' : 'DISABLED'}`);
+      this.content.webContents.send('awrit:set-design-mode', this.designMode);
+      this.toolbar.webContents.send('awrit:design-mode-changed', this.designMode);
+    },
+    toggleKeyHelp() {
+      this.keyHelpVisible = !this.keyHelpVisible;
+      
+      if (this.keyHelpVisible) {
+        loadToolbarContent();
+        const bindings = getAllKeyBindings();
+        
+        const sendSignal = () => {
+          this.toolbar.webContents.send('awrit:set-key-help-visible', {
+            visible: this.keyHelpVisible,
+            bindings
+          });
+        };
+
+        if (this.toolbar.webContents.isLoading()) {
+          this.toolbar.webContents.once('did-finish-load', sendSignal);
+        } else {
+          sendSignal();
+          setTimeout(sendSignal, 100);
+        }
+        
+        // @ts-expect-error
+        this.toolbar.focusOnWebView();
+        this.toolbar.focus();
+      } else {
+        this.toolbar.webContents.send('awrit:set-key-help-visible', { visible: false });
+        // @ts-expect-error
+        this.content.focusOnWebView();
+        this.content.focus();
+      }
+      
+      this.toolbar.setIgnoreMouseEvents(!this.keyHelpVisible && !this.omniboxVisible);
     },
     back: () => content.webContents.goBack(),
     forward: () => content.webContents.goForward(),
@@ -394,7 +465,7 @@ export async function createWindowWithToolbar(
       ipcCleanup();
       ipcMain.removeListener('awrit:open-external', onOpenExternal);
       ipcMain.removeListener('awrit:request-secure-login', onRequestSecureLogin);
-      destructors.forEach(d => d());
+      destructors.forEach(d => { d(); });
       destructors.length = 0;
       refreshers.length = 0;
       const index = managedViews.indexOf(view);
@@ -441,7 +512,37 @@ export async function createWindowWithToolbar(
 
   const ipcCleanup = setupToolbarIPC(toolbar.webContents, content.webContents, view);
 
+  // Set initial mouse event ignore state for the toolbar overlay
+  toolbar.setIgnoreMouseEvents(!view.omniboxVisible && !view.keyHelpVisible);
+
+  const establishFocus = () => {
+    if (view.omniboxVisible || view.keyHelpVisible) {
+      // @ts-expect-error
+      view.toolbar.focusOnWebView();
+    } else {
+      // @ts-expect-error
+      view.content.focusOnWebView();
+    }
+  };
+
+  // Aggressive initialization focus kickstart
+  // Offscreen renderers often need a few focus signals to wake up the input loop
+  const kickstart = () => {
+    establishFocus();
+    // Dummy event to wake up the event loop
+    content.webContents.sendInputEvent({ type: 'mouseMove', x: 0, y: 0 });
+  };
+
+  kickstart();
+  content.webContents.on('did-finish-load', kickstart);
+  
+  // Multiple delays ensure focus sticks after internal Chromium readiness
+  setTimeout(kickstart, 500);
+  setTimeout(kickstart, 1500);
+  setTimeout(kickstart, 3000);
+
   const onOpenExternal = (_event: any, url: string) => {
+
     console_.log('[Auth Bridge] Request to open external URL:', url);
     shell.openExternal(url);
   };
@@ -469,14 +570,27 @@ export async function createWindowWithToolbar(
     }
   });
 
+  // Trigger an initial relayout to ensure focus and size are perfectly synced
+  setImmediate(() => {
+    if (!destroyed) {
+      view.relayout(true);
+      // Prime the renderer with a dummy mouse event to wake up the event loop
+      content.webContents.sendInputEvent({ type: 'mouseMove', x: 0, y: 0 });
+    }
+  });
+
   return view;
 }
 
 function updateViewSizes(view: WindowView, { width, height }: WindowDimensions) {
   if (width <= 0 || height <= 0) return;
-  const dpr = getDisplayScale() ?? screen.getPrimaryDisplay().scaleFactor;
-  view.layoutContainer = layout(width, height, dpr);
-  view.toolbarLayoutContainer = layout(width, height, dpr);
+  
+  // Update container dimensions
+  view.layoutContainer.logicalWidth = width;
+  view.layoutContainer.logicalHeight = height;
+  view.toolbarLayoutContainer.logicalWidth = width;
+  view.toolbarLayoutContainer.logicalHeight = height;
+
   view.toolbarNode.width = px(width);
   view.toolbarNode.height = px(height);
   view.contentNode.width = px(width);

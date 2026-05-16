@@ -10,6 +10,7 @@ export const possibleOptions = {
   transparent: { short: 't', description: 'Make the window transparent' },
   'debug-paint': { short: 'p', description: 'Debug paint' },
   rebuild: { short: 'r', description: 'Rebuild the toolbar' },
+  design: { short: 'D', description: 'Enable design-to-edit mode' },
 
   'window-size': { short: 'w', description: 'Window size as WIDTHxHEIGHT', string: true, arg: 'WIDTHxHEIGHT' },
 } as const;

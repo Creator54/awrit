@@ -15,54 +15,78 @@ let lastSentX = -1;
 let lastSentY = -1;
 let lastSentView: any = null;
 let lastSentMods = '';
-
-
+let hasWarmedUp = false;
 
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
-type KeyEventModifiers = Lowercase<KeyEventOriginal['modifiers'][number]>[];
-type KeyEvent = Omit<KeyEventOriginal, 'modifiers'> & {
-  modifiers: KeyEventModifiers;
-};
+
+/**
+ * Maps terminal modifier names to Electron-compatible names
+ */
+function normalizeModifiers(modifiers: string[]): any[] {
+  return (modifiers || []).map((m) => {
+    const lower = m.toLowerCase();
+    if (lower === 'ctrl') return 'control';
+    if (lower === 'meta') return 'meta'; // 'command' or 'cmd' also works
+    return lower;
+  });
+}
 
 function isSimpleMouseEvent(kind: unknown): kind is (typeof mouseEventTypes)[number] {
   return mouseEventTypes.includes(kind as (typeof mouseEventTypes)[number]);
 }
 
-export function handleInput(evt: TermEvent) {
+export function handleInput(evt: TermEvent): boolean {
   const view = focusedView.current;
   if (!view) {
-    handleKeyBinding(evt);
-    return;
+    return handleKeyBinding(evt);
   }
 
   switch (evt.eventType) {
     case 'key': {
       if (handleKeyBinding(evt, view)) {
-        return;
+        return true;
       }
 
-      const webContents = view.omniboxVisible ? view.toolbar.webContents : view.focusedContent;
-      const { code: keyCode, modifiers, down, isCharEvent } = evt.keyEvent as KeyEvent;
+      const isToolbarActive = view.omniboxVisible || view.keyHelpVisible;
+      const targetWindow = isToolbarActive ? view.toolbar : view.content;
+      const webContents = targetWindow.webContents;
+      
+      // FORCED FOCUS: Ensure the renderer is active before every event
+      if (!hasWarmedUp) {
+        hasWarmedUp = true;
+        targetWindow.blur();
+      }
+      targetWindow.focus();
+      webContents.focus();
+      
+      const { code, modifiers, down, isCharEvent } = evt.keyEvent;
+      const electronMods = normalizeModifiers(modifiers);
 
-      if (isCharEvent && down) {
+      if (down) {
+        // keyDown event
         webContents.sendInputEvent({
-          type: 'rawKeyDown',
-          keyCode,
-          modifiers,
+          type: 'keyDown',
+          keyCode: code,
+          modifiers: electronMods,
         });
-        webContents.sendInputEvent({
-          type: 'char',
-          keyCode,
-          modifiers,
-        });
+
+        // char event for printable characters
+        if (isCharEvent) {
+          webContents.sendInputEvent({
+            type: 'char',
+            keyCode: code,
+            modifiers: electronMods,
+          });
+        }
       } else {
+        // keyUp event
         webContents.sendInputEvent({
-          type: down ? 'keyDown' : 'keyUp',
-          keyCode,
-          modifiers,
+          type: 'keyUp',
+          keyCode: code,
+          modifiers: electronMods,
         });
       }
-      break;
+      return false;
     }
 
     case 'resize': {
@@ -70,29 +94,34 @@ export function handleInput(evt: TermEvent) {
       if (resizeView) {
         resizeView.relayout();
       }
-      break;
+      return true;
     }
 
     case 'paste': {
       if (evt.paste) {
-        const webContents = view.omniboxVisible ? view.toolbar.webContents : view.focusedContent;
+        const isToolbarActive = view.omniboxVisible || view.keyHelpVisible;
+        const webContents = isToolbarActive ? view.toolbar.webContents : view.content.webContents;
         webContents.insertText(evt.paste);
       }
-      break;
+      return true;
     }
 
     case 'focus':
-      break;
+      if (evt.focusGained) {
+        view.focusedContent.focus();
+      }
+      return true;
 
     case 'mouse': {
       const { kind, button, x, y, modifiers } = evt.mouseEvent;
+      const electronMods = normalizeModifiers(modifiers);
+      
       if (
         (kind === 'mouseUp' || kind === 'mouseDown') &&
         button &&
         ['fourth', 'fifth'].includes(button ?? '')
       ) {
-        handleKeyBinding(evt, view);
-        return;
+        return handleKeyBinding(evt, view);
       }
 
       const rawX = x ?? 0;
@@ -101,27 +130,30 @@ export function handleInput(evt: TermEvent) {
       const { toolbarNode, contentNode, layoutContainer } = view;
       const dpr = layoutContainer.devicePixelRatio;
 
-      // Determine if click is in toolbar or content area
-      // If omnibox is visible, it takes precedence as an overlay
-      const isInToolbar = view.omniboxVisible || rawY < contentNode.deviceLayout.y;
+      const isOverlayActive = view.omniboxVisible || view.keyHelpVisible;
+      const isInToolbar = isOverlayActive && rawY < contentNode.deviceLayout.y;
 
-      // Pick target webContents and compute coordinates relative to it
+      const targetWindow = isInToolbar ? view.toolbar : view.content;
+      const targetContents = targetWindow.webContents;
+
+      // FORCED FOCUS: Ensure the renderer is active before every event
+      targetWindow.focus();
+      targetContents.focus();
+      view.focusedContent = targetContents;
+
       const targetNode = isInToolbar ? toolbarNode : contentNode;
-      const targetContents = isInToolbar ? view.toolbar.webContents : view.content.webContents;
-
-      // Convert from terminal pixels to CSS pixels relative to the target area
       const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);
       const adjustedY = Math.floor((rawY - targetNode.deviceLayout.y) / dpr);
 
       if (kind === 'mouseMove') {
-        const mods = (modifiers || []).join(',');
+        const mods = electronMods.join(',');
         if (
           view === lastSentView &&
           adjustedX === lastSentX &&
           adjustedY === lastSentY &&
           mods === lastSentMods
         ) {
-          return;
+          return true;
         }
         lastSentX = adjustedX;
         lastSentY = adjustedY;
@@ -136,21 +168,20 @@ export function handleInput(evt: TermEvent) {
           wheelTicksX: 0,
           deltaX: 0,
           deltaY: kind === 'scrollUp' ? WHEEL_DELTA : -WHEEL_DELTA,
-          modifiers,
+          modifiers: electronMods,
           x: adjustedX,
           y: adjustedY,
           accelerationRatioY: 0.5,
           hasPreciseScrollingDeltas: false,
           canScroll: true,
         });
-        break;
+        return true;
       }
 
       if (kind === 'scrollLeft' || kind === 'scrollRight') {
         const now = Date.now();
         const direction = kind === 'scrollLeft' ? -1 : 1;
 
-        // Reset accumulator if direction changed or after 1s of inactivity
         if (Math.sign(horizontalScrollAccumulator) !== direction || now - lastScrollTime > 1000) {
           horizontalScrollAccumulator = 0;
         }
@@ -158,7 +189,6 @@ export function handleInput(evt: TermEvent) {
         horizontalScrollAccumulator += direction;
         lastScrollTime = now;
 
-        // Trigger navigation if threshold met and cooldown passed
         if (
           Math.abs(horizontalScrollAccumulator) >= NAVIGATION_THRESHOLD &&
           now - lastNavigationTime > NAVIGATION_COOLDOWN
@@ -181,21 +211,21 @@ export function handleInput(evt: TermEvent) {
           wheelTicksX: direction,
           deltaX: direction * WHEEL_DELTA,
           deltaY: 0,
-          modifiers,
+          modifiers: electronMods,
           x: adjustedX,
           y: adjustedY,
           accelerationRatioX: 0.5,
           hasPreciseScrollingDeltas: false,
           canScroll: true,
         });
-        break;
+        return true;
       }
 
       if (!isSimpleMouseEvent(kind)) {
-        break;
+        return false;
       }
       if (!button && kind !== 'mouseMove') {
-        break;
+        return false;
       }
 
       const electronButton =
@@ -206,23 +236,25 @@ export function handleInput(evt: TermEvent) {
         x: adjustedX,
         y: adjustedY,
         button: electronButton,
-        modifiers,
+        modifiers: electronMods,
         clickCount: kind === 'mouseDown' ? 1 : 0,
       });
 
       if (kind === 'mouseDown' && button === 'left') {
-        if (targetContents !== view.focusedContent) {
-          if (targetContents === view.content.webContents) {
-            view.toolbar.blurWebView();
-            view.content.focusOnWebView();
-          } else {
-            view.content.blurWebView();
-            view.toolbar.focusOnWebView();
-          }
-          view.focusedContent = targetContents;
+        if (targetContents === view.content.webContents) {
+          // @ts-expect-error
+          view.toolbar.blurWebView();
+          // @ts-expect-error
+          view.content.focusOnWebView();
+        } else {
+          // @ts-expect-error
+          view.content.blurWebView();
+          // @ts-expect-error
+          view.toolbar.focusOnWebView();
         }
       }
-      break;
+      return true;
     }
   }
+  return false;
 }

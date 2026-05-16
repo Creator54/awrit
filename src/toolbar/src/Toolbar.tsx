@@ -1,4 +1,4 @@
-import { type ComponentProps, createSignal, Show, onMount, onCleanup, For } from 'solid-js';
+import { createSignal, Show, onMount, onCleanup, For } from 'solid-js';
 
 export interface NavigationState {
   canGoBack: boolean;
@@ -10,18 +10,20 @@ export interface BrowserToolbar {
   navigateForward: () => void;
   refresh: () => void;
   navigateTo: (url: string) => void;
+  stopFindInPage: () => void;
+  onToggleFind: (callback: () => void) => void;
+  onUrlChanged: (callback: (url: string) => void) => void;
+  onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
   onLoadingStarted: (callback: () => void) => void;
   onLoadingStopped: (callback: () => void) => void;
   onLoadingProgress: (callback: (progress: number) => void) => void;
-  onUrlChanged: (callback: (url: string) => void) => void;
-  onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
-  findInPage: (text: string, options: { forward: boolean; matchCase: boolean }) => void;
-  stopFindInPage: () => void;
-  onToggleFind: (callback: () => void) => void;
   onToggleUrlBar: (callback: () => void) => void;
   onSetUrlBarVisible: (callback: (visible: boolean) => void) => void;
+  onDesignModeChanged: (callback: (active: boolean) => void) => void;
+  onSetKeyHelpVisible: (callback: (data: { visible: boolean; bindings?: Array<{ action: string; keys: string[] }> }) => void) => void;
   toggleUrlBar: () => void;
 }
+
 
 declare global {
   interface Window {
@@ -40,10 +42,14 @@ interface Suggestion extends HistoryItem {
 }
 
 export function Toolbar() {
-  const [isLoading, setIsLoading] = createSignal(false);
+  const [_isLoading, setIsLoading] = createSignal(false);
   const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [url, setUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
+  const [keyHelp, setKeyHelp] = createSignal<{ visible: boolean; bindings: Array<{ action: string; keys: string[] }> }>({ 
+    visible: false, 
+    bindings: [] 
+  });
   const [history, setHistory] = createSignal<HistoryItem[]>([]);
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [navigationState, setNavigationState] = createSignal<NavigationState>({
@@ -53,12 +59,28 @@ export function Toolbar() {
 
   let inputRef: HTMLInputElement | undefined;
 
-  window.ipc.onLoadingStarted(() => setIsLoading(true));
-  window.ipc.onLoadingStopped(() => setIsLoading(false));
-  window.ipc.onLoadingProgress((progress: number) => setLoadingProgress(progress));
-  window.ipc.onUrlChanged((newUrl: string) => setUrl(newUrl));
-  window.ipc.onNavigationStateChanged((state: NavigationState) => setNavigationState(state));
-  
+  window.ipc.onUrlChanged((newUrl: string) => {
+    setUrl(newUrl);
+  });
+
+  window.ipc.onNavigationStateChanged((state: NavigationState) => {
+    setNavigationState(state);
+  });
+
+  window.ipc.onLoadingStarted(() => {
+    setIsLoading(true);
+    setLoadingProgress(5);
+  });
+
+  window.ipc.onLoadingStopped(() => {
+    setIsLoading(false);
+    setLoadingProgress(0);
+  });
+
+  window.ipc.onLoadingProgress((progress: number) => {
+    setLoadingProgress(progress);
+  });
+
   window.ipc.onSetUrlBarVisible((visible: boolean) => {
     console.log('[Toolbar] Visibility received:', visible);
     setOmniboxVisible(visible);
@@ -71,6 +93,13 @@ export function Toolbar() {
     }
   });
 
+  window.ipc.onSetKeyHelpVisible((data) => {
+    setKeyHelp({ 
+      visible: data.visible, 
+      bindings: data.bindings || [] 
+    });
+  });
+
   const addToHistory = (title: string, url: string, isSearch: boolean) => {
     setHistory(prev => {
       const filtered = prev.filter(item => item.url !== url);
@@ -80,113 +109,47 @@ export function Toolbar() {
     });
   };
 
-  const isLikelyUrl = (text: string) => {
-    return /^https?:\/\//i.test(text) || 
-           (text.includes('.') && !text.includes(' ')) || 
-           text.startsWith('localhost:');
+  const getSuggestions = (): Suggestion[] => {
+    const currentInput = url().trim();
+    if (!currentInput) return history().map(h => ({ ...h, type: 'history' }));
+
+    const filteredHistory = history().filter(h => 
+      h.title.toLowerCase().includes(currentInput.toLowerCase()) ||
+      h.url.toLowerCase().includes(currentInput.toLowerCase())
+    );
+
+    const isUrl = currentInput.includes('.') && !currentInput.includes(' ');
+    
+    const action: Suggestion = isUrl 
+      ? { title: `Go to ${currentInput}`, url: currentInput, isSearch: false, type: 'action' }
+      : { title: `Search Google for "${currentInput}"`, url: `https://www.google.com/search?q=${encodeURIComponent(currentInput)}`, isSearch: true, type: 'action' };
+
+    return [action, ...filteredHistory.map(h => ({ ...h, type: 'history' }))];
   };
 
-  const filteredHistory = () => {
-    const query = url().toLowerCase().trim();
-    if (!query) return history().slice(0, 10);
-    return history().filter(item => 
-      item.title.toLowerCase().includes(query) || 
-      item.url.toLowerCase().includes(query)
-    ).slice(0, 10);
-  };
-
-  const allSuggestions = () => {
-    const query = url().trim();
-    const suggestions: Suggestion[] = [];
-    
-    if (query) {
-      const isUrl = isLikelyUrl(query);
-      if (isUrl) {
-        suggestions.push({ 
-          title: query, 
-          url: 'Go to website', 
-          isSearch: false,
-          type: 'action'
-        });
-        suggestions.push({ 
-          title: query, 
-          url: 'Search with Google', 
-          isSearch: true,
-          type: 'action'
-        });
-      } else {
-        suggestions.push({ 
-          title: query, 
-          url: 'Search with Google', 
-          isSearch: true,
-          type: 'action'
-        });
-        suggestions.push({ 
-          title: query, 
-          url: 'Go to website', 
-          isSearch: false,
-          type: 'action'
-        });
-      }
-    }
-
-    const filtered = filteredHistory();
-    const seenUrls = new Set(suggestions.map(s => s.title.toLowerCase()));
-    
-    for (const item of filtered) {
-       const urlPath = item.url.replace(/^https?:\/\//, '').toLowerCase();
-       if (!seenUrls.has(item.title.toLowerCase()) && !seenUrls.has(urlPath)) {
-         suggestions.push({ ...item, type: 'history' });
-         seenUrls.add(item.title.toLowerCase());
-       }
-    }
-
-    return suggestions.slice(0, 10);
+  const handleInput = (e: InputEvent) => {
+    setUrl((e.target as HTMLInputElement).value);
+    setSelectedIndex(0);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    const suggestions = allSuggestions();
-    
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % Math.max(1, suggestions.length));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + suggestions.length) % Math.max(1, suggestions.length));
-    } else if (e.key === 'Enter') {
+    const suggestions = getSuggestions();
+    if (e.key === 'Enter') {
       const selected = suggestions[selectedIndex()];
       if (selected) {
-        executeSuggestion(selected);
-      } else if (url().trim()) {
-        // Fallback for when no selection is made but Enter is pressed
-        const query = url().trim();
-        const isUrl = isLikelyUrl(query);
-        const finalUrl = isUrl 
-          ? (query.startsWith('http') ? query : `https://${query}`)
-          : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        
-        addToHistory(query, finalUrl, !isUrl);
-        window.ipc.navigateTo(finalUrl);
+        window.ipc.navigateTo(selected.url);
+        addToHistory(selected.isSearch ? selected.title.replace('Search Google for "', '').replace('"', '') : selected.title, selected.url, selected.isSearch);
         window.ipc.toggleUrlBar();
       }
+    } else if (e.key === 'ArrowDown') {
+      setSelectedIndex(prev => Math.min(prev + 1, suggestions.length - 1));
+      e.preventDefault();
+    } else if (e.key === 'ArrowUp') {
+      setSelectedIndex(prev => Math.max(prev - 1, 0));
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      window.ipc.toggleUrlBar();
     }
-  };
-
-  const executeSuggestion = (selected: Suggestion) => {
-    if (selected.type === 'action') {
-       if (selected.isSearch) {
-          const finalUrl = `https://www.google.com/search?q=${encodeURIComponent(selected.title)}`;
-          addToHistory(selected.title, finalUrl, true);
-          window.ipc.navigateTo(finalUrl);
-       } else {
-          const finalUrl = selected.title.startsWith('http') ? selected.title : `https://${selected.title}`;
-          addToHistory(selected.title, finalUrl, false);
-          window.ipc.navigateTo(finalUrl);
-       }
-    } else {
-      window.ipc.navigateTo(selected.url);
-    }
-    window.ipc.toggleUrlBar();
   };
 
   const handleBack = () => {
@@ -199,7 +162,7 @@ export function Toolbar() {
     window.ipc.toggleUrlBar();
   };
 
-  const handleRefresh = () => {
+  const _handleRefresh = () => {
     window.ipc.refresh();
     window.ipc.toggleUrlBar();
   };
@@ -208,101 +171,134 @@ export function Toolbar() {
     try {
       const stored = localStorage.getItem('awrit:history');
       if (stored) setHistory(JSON.parse(stored));
-    } catch (e) {}
+    } catch (_e) {}
 
     const handleGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && omniboxVisible()) {
-        window.ipc.toggleUrlBar();
+      if (e.key === 'Escape' && (omniboxVisible() || keyHelp().visible)) {
+        if (omniboxVisible()) window.ipc.toggleUrlBar();
+        if (keyHelp().visible) setKeyHelp({ visible: false, bindings: [] });
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
     onCleanup(() => window.removeEventListener('keydown', handleGlobalKey));
   });
 
-  // Close when clicking backdrop
-  const handleBackdropClick = (e: MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      window.ipc.toggleUrlBar();
-    }
-  };
-
   return (
     <>
       {/* Loading Progress Bar */}
-      <div 
-        class="fixed top-0 left-0 h-[2px] bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-300 ease-out z-[9999]"
-        style={{ 
-          width: `${loadingProgress()}%`, 
-          opacity: loadingProgress() > 0 && loadingProgress() < 100 ? 1 : 0,
-          display: loadingProgress() > 0 ? 'block' : 'none'
-        }}
-      />
-      
+      <Show when={loadingProgress() > 0}>
+        <div 
+          class="fixed top-0 left-0 h-[2px] bg-blue-500 z-50 transition-all duration-300 ease-out"
+          style={{ width: `${loadingProgress()}%` }}
+        />
+      </Show>
+
       <Show when={omniboxVisible()}>
         <div 
-          class="h-screen w-screen flex items-center justify-center pb-[20vh] bg-black/40 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
-          onClick={handleBackdropClick}
+          class="h-screen w-screen flex flex-col items-center pt-[15vh] bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => window.ipc.toggleUrlBar()}
         >
           <div 
-            class="w-[640px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans"
+            class="w-[600px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header / Input Area */}
-            <div class="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Search or enter URL..."
-                value={url()}
-                spellcheck="false"
-                onInput={(e) => {
-                  setUrl(e.currentTarget.value);
-                  setSelectedIndex(0);
-                }}
-                onKeyDown={handleKeyDown}
-                class="flex-1 bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
-              />
-              
-              {/* Navigation Controls */}
-              <div class="flex items-center gap-0.5 ml-2 border-l border-white/10 pl-2">
-                <button 
-                  onClick={handleBack} 
-                  disabled={!navigationState().canGoBack} 
-                  title="Back"
-                  class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+            {/* Input Area */}
+            <div class="p-4 flex items-center gap-3 border-b border-white/5">
+              <div class="flex gap-1">
+                 <button 
+                  onClick={handleBack}
+                  disabled={!navigationState().canGoBack}
+                  class="p-2 hover:bg-white/5 rounded-lg disabled:opacity-20 text-white/70 transition-colors"
                 >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <button 
-                  onClick={handleForward} 
-                  disabled={!navigationState().canGoForward} 
-                  title="Forward"
-                  class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+                  onClick={handleForward}
+                  disabled={!navigationState().canGoForward}
+                  class="p-2 hover:bg-white/5 rounded-lg disabled:opacity-20 text-white/70 transition-colors"
                 >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                 </button>
               </div>
+
+              <div class="flex-1 relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={url()}
+                  onInput={handleInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search or enter URL"
+                  class="w-full bg-white/5 border border-white/5 focus:border-blue-500/50 outline-none rounded-lg px-4 py-2 text-white placeholder-white/20 transition-all text-[15px]"
+                />
+              </div>
+            </div>
+
+            {/* Suggestions List */}
+            <div class="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
+              <For each={getSuggestions()}>
+                {(item, index) => (
+                  <SuggestionItem
+                    title={item.title}
+                    url={item.url}
+                    selected={index() === selectedIndex()}
+                    onClick={() => {
+                      window.ipc.navigateTo(item.url);
+                      addToHistory(item.isSearch ? item.title.replace('Search Google for "', '').replace('"', '') : item.title, item.url, item.isSearch);
+                      window.ipc.toggleUrlBar();
+                    }}
+                    icon={item.isSearch ? 'search' : 'history'}
+                  />
+                )}
+              </For>
+            </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* Keybindings Help Overlay */}
+      <Show when={keyHelp().visible}>
+        <div 
+          class="h-screen w-screen flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setKeyHelp({ visible: false, bindings: [] })}
+        >
+          <div 
+            class="w-[500px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-white/90 text-lg font-semibold">Keybindings</h2>
+              <span class="text-white/30 text-xs px-2 py-1 bg-white/5 rounded">? to toggle</span>
             </div>
             
-            {/* Main Content / Suggestions */}
-            <div class="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
-               <div class="flex flex-col">
-                  <For each={allSuggestions()}>
-                    {(item, index) => (
-                      <SuggestionItem 
-                        icon={
-                          item.isSearch 
-                            ? <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                            : <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                        }
-                        title={item.title} 
-                        url={item.type === 'action' ? item.url : item.url.replace(/^https?:\/\//, '')} 
-                        selected={selectedIndex() === index()}
-                        onClick={() => executeSuggestion(item)} 
-                      />
-                    )}
-                  </For>
-               </div>
+            <div class="grid grid-cols-1 gap-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <For each={keyHelp().bindings}>
+                {(binding) => (
+                  <div class="flex items-center justify-between group py-1">
+                    <span class="text-white/80 text-sm font-medium group-hover:text-white transition-colors">
+                      {binding.action.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                    </span>
+                    <div class="flex flex-wrap gap-2 justify-end">
+                      <For each={binding.keys}>
+                        {(key) => (
+                          <kbd class="px-2 py-1 bg-white/10 border border-white/10 rounded text-white/60 text-xs font-mono min-w-[2.5rem] text-center">
+                            {key}
+                          </kbd>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+
+            <div class="mt-8 pt-4 border-t border-white/5 flex justify-center">
+              <button 
+                onClick={() => setKeyHelp({ visible: false, bindings: [] })}
+                class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/90 text-sm rounded-lg transition-all"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -313,16 +309,48 @@ export function Toolbar() {
 
 function SuggestionItem(props: { icon?: any; title: string; url: string; selected?: boolean; onClick: () => void }) {
   return (
-    <div 
-      class={`flex items-center gap-3 px-4 py-[6px] cursor-pointer transition-colors ${props.selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
+    <div
       onClick={props.onClick}
+      class={`px-4 py-3 cursor-pointer flex items-center gap-3 transition-colors ${
+        props.selected ? 'bg-white/10' : 'hover:bg-white/5'
+      }`}
     >
-       <div class="w-4 h-4 flex items-center justify-center flex-shrink-0">
-          {props.icon || (
-            <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          )}
-       </div>
-       <div class="flex items-center gap-2 truncate text-[13px]">
+      <div class="text-white/30">
+        <Show when={props.icon === 'search'} fallback={
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-12 0 9 9 0 0112 0z" /></svg>
+        }>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        </Show>
+      </div>
+      <div class="flex flex-col flex-1 min-w-0">
+        <span class="text-white/90 text-[14px] truncate">{props.title}</span>
+        <span class="text-white/30 text-[12px] truncate">{props.url}</span>
+      </div>
+    </div>
+  );
+}
+
+export function BrowserToolbarItem(props: { icon: string; label: string; active?: boolean; onClick: () => void }) {
+  return (
+    <button 
+      onClick={props.onClick}
+      class={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
+        props.active ? 'bg-white/10 text-white' : 'text-white/40 hover:bg-white/5 hover:text-white/70'
+      }`}
+    >
+      <span class="text-[11px] font-medium tracking-wide uppercase">{props.label}</span>
+    </button>
+  );
+}
+
+export function NavigationTab(props: { title: string; url: string; active?: boolean }) {
+  return (
+    <div class={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+      props.active 
+        ? 'bg-white/10 border-white/10 text-white' 
+        : 'border-transparent text-white/40 hover:text-white/60'
+    }`}>
+       <div class="flex flex-col min-w-0 max-w-[120px] gap-2 truncate text-[13px]">
           <span class="text-white/90">{props.title}</span>
           <span class="text-white/40">—</span>
           <span class="text-white/50 truncate">{props.url}</span>

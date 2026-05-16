@@ -5,25 +5,27 @@ import type { WindowView } from './windows';
 
 const isMac = process.platform === 'darwin';
 
-export type KeyBindingAction = (event: { isMac: boolean; view?: WindowView }) => void;
+export type KeyBindingAction = ((event: { isMac: boolean; view?: WindowView }) => void) & {
+  displayName?: string;
+};
 
 type KeyBinding = {
   keys: string[];
+  original: string;
   action: KeyBindingAction;
 };
 
 type KeyBindingMap = Map<string, KeyBinding[]>;
 
-const TIMEOUT_MS = 500; // Increased timeout for better UX
-
-// State
 const bindings: KeyBindingMap = new Map();
 let currentSequence: string[] = [];
 let timeoutId: NodeJS.Timeout | null = null;
 let pendingAction: KeyBindingAction | null = null;
 
+const TIMEOUT_MS = 500;
+
 /**
- * Parse a Neovim-style keybinding string into an array of key codes
+ * Normalizes and parses a keybinding string into a sequence of keys.
  * Example: "<C-w>l" -> ["ctrl+w", "l"]
  */
 function parseKeyBinding(binding: string): string[] {
@@ -38,7 +40,15 @@ function parseKeyBinding(binding: string): string[] {
     if (char === '<' && !inSpecial) {
       inSpecial = true;
       if (current) {
-        parts.push(current);
+        // Handle plain characters before the bracket
+        for (const c of current) {
+          const lower = c.toLowerCase();
+          if (c !== lower && c.length === 1) {
+            parts.push('shift+' + lower);
+          } else {
+            parts.push(lower);
+          }
+        }
         current = '';
       }
       continue;
@@ -47,32 +57,61 @@ function parseKeyBinding(binding: string): string[] {
     if (char === '>' && inSpecial) {
       inSpecial = false;
       if (current) {
-        // Handle special keys
-        const special = current.toLowerCase();
-        const mods = special.split('-');
+        // Handle special keys like <C-a> or <Enter>
+        const mods = current.split('-');
+        let lastPart = mods[mods.length - 1].toLowerCase();
+        
+        // Normalize special key names to match awrit-native-rs
+        switch (lastPart) {
+          case 'cr':
+          case 'enter':
+            lastPart = 'return';
+            break;
+          case 'esc':
+            lastPart = 'escape';
+            break;
+          case 'bs':
+            lastPart = 'backspace';
+            break;
+          case 'up':
+          case 'down':
+          case 'left':
+          case 'right':
+          case 'home':
+          case 'end':
+          case 'pageup':
+          case 'pagedown':
+          case 'tab':
+          case 'delete':
+          case 'insert':
+          case 'space':
+            // These are already correct
+            break;
+        }
+        
         for (const mod of mods.slice(0, -1)) {
-          switch (mod) {
-            case 'c':
-              modifiers.push('ctrl');
-              break;
-            case 'a':
-              modifiers.push('alt');
-              break;
-            case 's':
-              modifiers.push('shift');
-              break;
-            case 'm':
-              modifiers.push('meta');
-              break;
+          const m = mod.toLowerCase();
+          switch (m) {
+            case 'c': modifiers.push('ctrl'); break;
+            case 'a': modifiers.push('alt'); break;
+            case 's': modifiers.push('shift'); break;
+            case 'm': modifiers.push('meta'); break;
           }
         }
-        current = mods[mods.length - 1];
 
         if (modifiers.length > 0) {
-          parts.push([...modifiers.sort(), current].join('+'));
+          let combo = [...new Set(modifiers)].sort().concat(lastPart).join('+');
+          
+          // Normalize common terminal aliases to canonical forms
+          if (combo === 'ctrl+[') combo = 'escape';
+          if (combo === 'ctrl+m') combo = 'return';
+          if (combo === 'ctrl+i') combo = 'tab';
+          if (combo === 'ctrl+h') combo = 'backspace';
+          
+          parts.push(combo);
           modifiers = [];
         } else {
-          parts.push(current);
+          parts.push(lastPart);
         }
         current = '';
       }
@@ -82,19 +121,31 @@ function parseKeyBinding(binding: string): string[] {
     if (inSpecial) {
       current += char;
     } else {
-      parts.push(char);
+      const lower = char.toLowerCase();
+      if (char !== lower && char.length === 1) {
+        parts.push('shift+' + lower);
+      } else {
+        parts.push(lower);
+      }
     }
   }
 
   if (current) {
-    parts.push(current);
+    for (const c of current) {
+      const lower = c.toLowerCase();
+      if (c !== lower && c.length === 1) {
+        parts.push('shift+' + lower);
+      } else {
+        parts.push(lower);
+      }
+    }
   }
 
   return parts;
 }
 
 /**
- * Load keybindings from a config object
+ * Loads keybindings from a config object
  */
 export function loadKeyBindings(config: { keybindings: Record<string, KeyBindingAction> }) {
   // Clear existing bindings
@@ -104,7 +155,6 @@ export function loadKeyBindings(config: { keybindings: Record<string, KeyBinding
     clearTimeout(timeoutId);
     timeoutId = null;
   }
-  pendingAction = null;
 
   // Add new bindings
   for (const [binding, action] of Object.entries(config.keybindings)) {
@@ -119,6 +169,7 @@ export function loadKeyBindings(config: { keybindings: Record<string, KeyBinding
     if (keyBindings) {
       keyBindings.push({
         keys,
+        original: binding,
         action,
       });
     }
@@ -126,86 +177,155 @@ export function loadKeyBindings(config: { keybindings: Record<string, KeyBinding
 }
 
 /**
+ * Get all registered keybindings grouped by action name
+ */
+export function getAllKeyBindings() {
+  const grouped = new Map<string, Map<string, string>>();
+  
+  for (const group of bindings.values()) {
+    for (const binding of group) {
+      const actionName = binding.action.displayName || binding.action.name || 'Unknown Action';
+      const normalizedSeq = binding.keys.join(' ');
+      
+      if (!grouped.has(actionName)) {
+        grouped.set(actionName, new Map());
+      }
+      
+      const actionBindings = grouped.get(actionName);
+      if (actionBindings && !actionBindings.has(normalizedSeq)) {
+        actionBindings.set(normalizedSeq, binding.original);
+      }
+    }
+  }
+
+  return Array.from(grouped.entries()).map(([action, shortcuts]) => ({
+    action,
+    keys: Array.from(shortcuts.values()).sort((a, b) => a.length - b.length),
+  }));
+}
+
+/**
  * Check if a TermEvent matches any keybinding
  */
 export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   let keyEvent: KeyEvent | undefined;
-  if (
-    event.eventType === 'mouse' &&
-    event.mouseEvent.kind === 'mouseUp' &&
-    event.mouseEvent.button &&
-    ['fourth', 'fifth'].includes(event.mouseEvent.button)
-  ) {
-    keyEvent = {
-      code: 'mouse' + (event.mouseEvent.button === 'fourth' ? '4' : '5'),
-      modifiers: event.mouseEvent.modifiers,
-      down: true,
-      isCharEvent: false,
-    };
-  }
-
-  if (event.eventType === 'key' && event.keyEvent.down) {
+  if (event.eventType === 'key') {
     keyEvent = event.keyEvent;
+  } else if (event.eventType === 'mouse') {
+    const { kind, button } = event.mouseEvent;
+    if (kind === 'mouseDown' || kind === 'mouseUp') {
+      if (button === 'fourth' || button === 'fifth') {
+        const code = button === 'fourth' ? 'Mouse4' : 'Mouse5';
+        keyEvent = { code, modifiers: [], down: kind === 'mouseDown', isCharEvent: false };
+      }
+    }
   }
 
-  if (!keyEvent) {
+  if (!keyEvent || !keyEvent.down) {
     return false;
   }
 
   const { code, modifiers } = keyEvent;
-  const normalizedCode = code.toLowerCase();
+  let normalizedCode = code.toLowerCase();
   
   // Filter and normalize modifiers for matching
-  const essentialModifiers = modifiers
+  let matchedModifiers = modifiers
     .map(m => m.toLowerCase())
     .filter(m => ['ctrl', 'alt', 'shift', 'meta'].includes(m));
+
+  // Terminal Aliases: Normalize common control character aliases
+  if (matchedModifiers.includes('ctrl') && matchedModifiers.length === 1) {
+    let aliased = false;
+    switch (normalizedCode) {
+      case '[':
+      case 'escape':
+        normalizedCode = 'escape';
+        aliased = true;
+        break;
+      case 'm':
+      case 'return':
+        normalizedCode = 'return';
+        aliased = true;
+        break;
+      case 'i':
+      case 'tab':
+        normalizedCode = 'tab';
+        aliased = true;
+        break;
+      case 'h':
+      case 'backspace':
+        normalizedCode = 'backspace';
+        aliased = true;
+        break;
+    }
+    if (aliased) {
+      matchedModifiers = [];
+    }
+  }
   
-  const sortedModifiers = [...new Set(essentialModifiers)].sort();
+  matchedModifiers = [...new Set(matchedModifiers)];
+  
+  const isAlpha = /^[a-zA-Z]$/.test(code);
+  const isUppercase = isAlpha && code === code.toUpperCase();
+  const isSymbol = code.length === 1 && !isAlpha && !/^[0-9]$/.test(code);
+
+  if ((isUppercase || isSymbol) && matchedModifiers.includes('shift')) {
+    matchedModifiers = matchedModifiers.filter(m => m !== 'shift');
+    if (isUppercase) {
+      matchedModifiers.push('shift');
+    }
+  }
+  
+  const sortedModifiers = matchedModifiers.sort();
   const key = sortedModifiers.length > 0 ? [...sortedModifiers, normalizedCode].join('+') : normalizedCode;
 
   if (options.dev) {
     console_.error('[KeyDebug]', {
       rawCode: code,
       rawMods: modifiers,
-      essentialMods: essentialModifiers,
+      essentialMods: matchedModifiers,
       matchedKey: key,
       isDown: keyEvent.down
     });
   }
 
-  // Clear any existing timeout
+  // Clear timeout if new key is pressed
   if (timeoutId) {
     clearTimeout(timeoutId);
     timeoutId = null;
   }
 
-  // Check if this key starts a new sequence
-  const startsNewSequence = bindings.has(key);
-  if (startsNewSequence) {
-    currentSequence = [];
-  }
-
   // Add to current sequence
   currentSequence.push(key);
 
-  // Check for matches
-  const keyBindings = bindings.get(currentSequence[0]);
-  if (keyBindings) {
-    // Check for partial matches first
-    const hasLongerBindings = keyBindings.some(
+  const checkMatch = (sequence: string[]): boolean | 'prefix' => {
+    const firstKey = sequence[0];
+    const keyBindings = bindings.get(firstKey);
+    
+    if (!keyBindings) return false;
+
+    const matchesPrefix = keyBindings.some(
       (b) =>
-        b.keys.length > currentSequence.length &&
-        b.keys.every((k, i) => i >= currentSequence.length || k === currentSequence[i]),
+        b.keys.length >= sequence.length &&
+        b.keys.every((k, i) => i >= sequence.length || k === sequence[i]),
     );
 
-    // Find single-key binding if it exists
-    const singleBinding = keyBindings.find((b) => b.keys.length === 1);
+    if (!matchesPrefix) return false;
+
+    const exactMatch = keyBindings.find(
+      (b) =>
+        sequence.length === b.keys.length &&
+        sequence.every((k, i) => k === b.keys[i]),
+    );
+
+    const hasLongerBindings = keyBindings.some(
+      (b) =>
+        b.keys.length > sequence.length &&
+        b.keys.every((k, i) => i >= sequence.length || k === sequence[i]),
+    );
 
     if (hasLongerBindings) {
-      // Store the single-key binding action if it exists
-      pendingAction = singleBinding?.action || null;
-
-      // Set timeout to execute the single-key binding if no more keys are pressed
+      pendingAction = exactMatch?.action || null;
       timeoutId = setTimeout(() => {
         if (pendingAction) {
           pendingAction({ isMac, view });
@@ -213,27 +333,27 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
         currentSequence = [];
         pendingAction = null;
       }, TIMEOUT_MS);
-
-      return false;
+      return 'prefix';
     }
 
-    // Look for exact matches if no longer bindings are possible
-    for (const binding of keyBindings) {
-      if (
-        currentSequence.length === binding.keys.length &&
-        currentSequence.every((k, i) => k === binding.keys[i])
-      ) {
-        // Execute exact match immediately
-        binding.action({ isMac, view });
-        currentSequence = [];
-        pendingAction = null;
-        return true;
-      }
+    if (exactMatch) {
+      exactMatch.action({ isMac, view });
+      currentSequence = [];
+      pendingAction = null;
+      return true;
     }
+
+    return 'prefix';
+  };
+
+  const result = checkMatch(currentSequence);
+  
+  if (result === false && currentSequence.length > 1) {
+    // Mismatch in sequence, try starting a new sequence with the last key
+    currentSequence = [key];
+    const retryResult = checkMatch(currentSequence);
+    return retryResult === true;
   }
 
-  // No matches found, reset sequence
-  currentSequence = [];
-  pendingAction = null;
-  return false;
+  return result === true;
 }

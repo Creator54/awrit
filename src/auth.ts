@@ -126,7 +126,7 @@ export class OAuthManager {
     return tokens;
   }
 
-  private saveTokens(tokens: any) {
+  public saveTokens(tokens: any) {
     try {
       fs.writeFileSync(this.tokenPath, JSON.stringify(tokens, null, 2));
     } catch (err) {
@@ -182,7 +182,7 @@ export class OAuthManager {
       try {
         const refreshed = await this.refreshToken(tokens.refresh_token);
         return refreshed.access_token;
-      } catch (err) {
+      } catch (_err) {
         console_.error(`Token refresh failed [${this.provider.name}], returning last known access token`);
         return tokens.access_token;
       }
@@ -310,7 +310,7 @@ export async function handleDeepLinkAuth(urlStr: string, session: Session): Prom
       refresh_token: parsed.searchParams.get('refresh') || undefined,
     };
     const manager = new OAuthManager(provider);
-    manager['saveTokens'](tokens);
+    manager.saveTokens(tokens);
 
     // Establish session
     if (provider.establishSession) {

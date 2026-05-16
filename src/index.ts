@@ -28,7 +28,7 @@ process.on('uncaughtException', (err) => {
   logStream.write(`UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}\n`);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, _promise) => {
   const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
   logStream.write(`UNHANDLED REJECTION: ${reason}\n`);
 });
@@ -44,10 +44,15 @@ import { registerProviders } from './authConfig';
 let homepage = 'https://github.com/chase/awrit';
 let urlBarDefaultVisible = false;
 
+let quitOnCtrlC = true;
+
 function loadConfig(config: typeof import('../config.js')) {
   if (config.homepage) homepage = config.homepage;
   if (config.urlBar && typeof config.urlBar.defaultVisible === 'boolean') {
     urlBarDefaultVisible = config.urlBar.defaultVisible;
+  }
+  if (config.kitty && typeof config.kitty.quitOnCtrlC === 'boolean') {
+    quitOnCtrlC = config.kitty.quitOnCtrlC;
   }
   if (config.keybindings) {
     // Create a clean keybindings object for loadKeyBindings
@@ -70,7 +75,12 @@ function loadConfig(config: typeof import('../config.js')) {
     }
     // Add default system keybindings
     const toggleKey = config.urlBar?.toggleKey || '<C-l>';
-    bindings[toggleKey] = ({ view }: { view?: WindowView }) => view?.toggleOmnibox();
+    bindings[toggleKey] = function toggleOmnibox({ view }: { view?: WindowView }) { view?.toggleOmnibox(); };
+
+    const designToggleKey = (config.urlBar as any)?.designToggleKey || '<A-d>';
+    bindings[designToggleKey] = function toggleDesignMode({ view }: { view?: WindowView }) { view?.toggleDesignMode(); };
+
+    bindings['?'] = function toggleKeyHelp({ view }: { view?: WindowView }) { view?.toggleKeyHelp(); };
 
     loadKeyBindings({ keybindings: bindings });
   }
@@ -139,11 +149,11 @@ const INITIAL_URL = options.url || homepage;
 
 
 
-let exiting = false;
+let _exiting = false;
 let quitListening = () => {};
 
 const cleanup = (signum = 1, reason?: string) => {
-  exiting = true;
+  _exiting = true;
   quitListening();
   clearPlacements();
   out.cleanup();
@@ -162,7 +172,19 @@ function inputHandler(evt: TermEvent) {
     console_.error('Graphics protocol: ', evt.graphics);
   }
 
-  handleInput(evt);
+  const handled = handleInput(evt);
+
+  // Handle Ctrl+C quit logic if enabled and NOT handled by a specific keybinding
+  if (
+    !handled &&
+    quitOnCtrlC && 
+    evt.eventType === 'key' && 
+    evt.keyEvent.code === 'c' && 
+    evt.keyEvent.modifiers.includes('ctrl') && 
+    evt.keyEvent.down
+  ) {
+    cleanup(0, 'Received Ctrl+C, quitting...');
+  }
 }
 
 function initializeTerminal() {
@@ -181,7 +203,8 @@ function initializeTerminal() {
     cleanup(1, 'Basic Kitty graphics protocol support is required');
   }
 
-  quitListening = listenForInput(inputHandler, 200);
+  quitListening = listenForInput(inputHandler, 10);
+
 
   out.clearScreen();
   out.placeCursor({ x: 0, y: 0 });
@@ -228,7 +251,7 @@ if (!gotTheLock) {
     // Someone tried to run a second instance, we should focus our window.
     // Also handle deep links from the command line (Linux/Windows)
     const url = commandLine.pop();
-    if (url && url.startsWith('awrit://')) {
+    if (url?.startsWith('awrit://')) {
       app.emit('open-url', new Event('open-url'), url);
     }
   });

@@ -136,14 +136,10 @@ const keybindings = {
   },
   linux: {
     '<C-c>': copy,
-    '<C-C>': copy,
     '<C-S-c>': copy,
-    '<C-S-C>': copy,
     '<C-A-d>': diagnosticCopy,
     '<C-v>': paste,
-    '<C-V>': paste,
     '<C-S-v>': paste, // standard terminal paste
-    '<C-S-V>': paste,
     '<C-q>': quit,
     '<C-d>': quit,
     '<C-]>': forward,
@@ -151,6 +147,7 @@ const keybindings = {
     '<C-f>': find,
     '<C-r>': refresh,
   },
+
   '<Mouse4>': back,
   '<Mouse5>': forward,
 };

@@ -21,7 +21,10 @@ contextBridge.exposeInMainWorld('ipc', {
   onNavigationStateChanged: (callback) =>
     ipcRenderer.on('content:navigation-state-changed', (_event, state) => callback(state)),
   onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', callback),
-  onToggleUrlBar: (callback) => ipcRenderer.on('toolbar:toggle-url-bar', callback),
+  onToggleUrlBar: (callback) => ipcRenderer.on('toolbar:toggle-url-bar', () => callback()),
   onSetUrlBarVisible: (callback) => ipcRenderer.on('omnibox:set-visible', (_event, visible) => callback(visible)),
+  onDesignModeChanged: (callback) => ipcRenderer.on('awrit:design-mode-changed', (_event, active) => callback(active)),
+  onSetKeyHelpVisible: (callback) => ipcRenderer.on('awrit:set-key-help-visible', (_event, data) => callback(data)),
   toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
-});
+  });
+

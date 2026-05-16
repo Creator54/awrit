@@ -33,6 +33,10 @@ try {
       ipcRenderer.send('awrit:auth-complete', data);
     }
   });
+
+  ipcRenderer.on('awrit:set-design-mode', (_event, active) => {
+    window.dispatchEvent(new CustomEvent('awrit:design-mode-changed', { detail: { active } }));
+  });
 } catch (e) {
   // If contextBridge fails (e.g. isolation disabled), we do nothing.
   // We want to remain secure and not fallback to dangerous patterns.

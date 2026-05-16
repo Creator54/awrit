@@ -1,7 +1,7 @@
 import { app, session as ElectronSession, type Session } from 'electron';
 import * as path from 'node:path';
 
-let sessionConfig = {
+const sessionConfig = {
   profile: null as string | null,
 };
 

@@ -46,7 +46,8 @@ export const clearScreen = () => {
 export function setTitle(title: string) {
   // Sanitize title to remove control characters and escape sequences
   // This prevents malicious websites from injecting terminal control codes via document.title
-  const sanitized = title.replace(/[\x00-\x1f\x7f]/g, '');
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: necessary for terminal security
+  const sanitized = title.replace(/[\u0000-\u001f\u007f]/g, '');
   write(ESC`]2;${sanitized}\a`);
 }
 
