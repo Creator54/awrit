@@ -12,6 +12,7 @@ export interface BrowserToolbar {
   navigateTo: (url: string) => void;
   onLoadingStarted: (callback: () => void) => void;
   onLoadingStopped: (callback: () => void) => void;
+  onLoadingProgress: (callback: (progress: number) => void) => void;
   onUrlChanged: (callback: (url: string) => void) => void;
   onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
   findInPage: (text: string, options: { forward: boolean; matchCase: boolean }) => void;
@@ -40,6 +41,7 @@ interface Suggestion extends HistoryItem {
 
 export function Toolbar() {
   const [isLoading, setIsLoading] = createSignal(false);
+  const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [url, setUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
   const [history, setHistory] = createSignal<HistoryItem[]>([]);
@@ -53,6 +55,7 @@ export function Toolbar() {
 
   window.ipc.onLoadingStarted(() => setIsLoading(true));
   window.ipc.onLoadingStopped(() => setIsLoading(false));
+  window.ipc.onLoadingProgress((progress: number) => setLoadingProgress(progress));
   window.ipc.onUrlChanged((newUrl: string) => setUrl(newUrl));
   window.ipc.onNavigationStateChanged((state: NavigationState) => setNavigationState(state));
   
@@ -224,75 +227,87 @@ export function Toolbar() {
   };
 
   return (
-    <Show when={omniboxVisible()}>
+    <>
+      {/* Loading Progress Bar */}
       <div 
-        class="h-screen w-screen flex items-center justify-center pb-[20vh] bg-black/40 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
-        onClick={handleBackdropClick}
-      >
+        class="fixed top-0 left-0 h-[2px] bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-300 ease-out z-[9999]"
+        style={{ 
+          width: `${loadingProgress()}%`, 
+          opacity: loadingProgress() > 0 && loadingProgress() < 100 ? 1 : 0,
+          display: loadingProgress() > 0 ? 'block' : 'none'
+        }}
+      />
+      
+      <Show when={omniboxVisible()}>
         <div 
-          class="w-[640px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans"
-          onClick={(e) => e.stopPropagation()}
+          class="h-screen w-screen flex items-center justify-center pb-[20vh] bg-black/40 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
+          onClick={handleBackdropClick}
         >
-          {/* Header / Input Area */}
-          <div class="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Search or enter URL..."
-              value={url()}
-              spellcheck="false"
-              onInput={(e) => {
-                setUrl(e.currentTarget.value);
-                setSelectedIndex(0);
-              }}
-              onKeyDown={handleKeyDown}
-              class="flex-1 bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
-            />
+          <div 
+            class="w-[640px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header / Input Area */}
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Search or enter URL..."
+                value={url()}
+                spellcheck="false"
+                onInput={(e) => {
+                  setUrl(e.currentTarget.value);
+                  setSelectedIndex(0);
+                }}
+                onKeyDown={handleKeyDown}
+                class="flex-1 bg-transparent border-none outline-none text-white/90 placeholder:text-white/30 text-[15px]"
+              />
+              
+              {/* Navigation Controls */}
+              <div class="flex items-center gap-0.5 ml-2 border-l border-white/10 pl-2">
+                <button 
+                  onClick={handleBack} 
+                  disabled={!navigationState().canGoBack} 
+                  title="Back"
+                  class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <button 
+                  onClick={handleForward} 
+                  disabled={!navigationState().canGoForward} 
+                  title="Forward"
+                  class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
             
-            {/* Navigation Controls */}
-            <div class="flex items-center gap-0.5 ml-2 border-l border-white/10 pl-2">
-              <button 
-                onClick={handleBack} 
-                disabled={!navigationState().canGoBack} 
-                title="Back"
-                class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
-              >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-              </button>
-              <button 
-                onClick={handleForward} 
-                disabled={!navigationState().canGoForward} 
-                title="Forward"
-                class="p-1.5 hover:bg-white/5 rounded-md text-white/40 hover:text-white transition-all disabled:opacity-20 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-white/40"
-              >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </button>
+            {/* Main Content / Suggestions */}
+            <div class="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
+               <div class="flex flex-col">
+                  <For each={allSuggestions()}>
+                    {(item, index) => (
+                      <SuggestionItem 
+                        icon={
+                          item.isSearch 
+                            ? <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            : <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                        }
+                        title={item.title} 
+                        url={item.type === 'action' ? item.url : item.url.replace(/^https?:\/\//, '')} 
+                        selected={selectedIndex() === index()}
+                        onClick={() => executeSuggestion(item)} 
+                      />
+                    )}
+                  </For>
+               </div>
             </div>
           </div>
-          
-          {/* Main Content / Suggestions */}
-          <div class="max-h-[400px] overflow-y-auto py-2 custom-scrollbar">
-             <div class="flex flex-col">
-                <For each={allSuggestions()}>
-                  {(item, index) => (
-                    <SuggestionItem 
-                      icon={
-                        item.isSearch 
-                          ? <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                          : <svg class="w-3.5 h-3.5 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                      }
-                      title={item.title} 
-                      url={item.type === 'action' ? item.url : item.url.replace(/^https?:\/\//, '')} 
-                      selected={selectedIndex() === index()}
-                      onClick={() => executeSuggestion(item)} 
-                    />
-                  )}
-                </For>
-             </div>
-          </div>
         </div>
-      </div>
-    </Show>
+      </Show>
+    </>
   );
 }
 

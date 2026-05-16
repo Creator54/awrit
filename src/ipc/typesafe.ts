@@ -8,6 +8,7 @@ export type Toolbar = {
 export type Content = {
   loadingStarted: () => void;
   loadingStopped: () => void;
+  loadingProgress: (progress: number) => void;
   urlChanged: (url: string) => void;
   navigationStateChanged: (state: { canGoBack: boolean; canGoForward: boolean }) => void;
 };
@@ -22,6 +23,7 @@ export const Toolbar: Array<keyof Toolbar> = [
 export const Content: Array<keyof Content> = [
   'loadingStarted',
   'loadingStopped',
+  'loadingProgress',
   'urlChanged',
   'navigationStateChanged',
 ];

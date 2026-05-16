@@ -826,8 +826,49 @@ function setupToolbarIPC(
     ipcMain.on(channel, handler);
   }
 
-  const onLoadingStarted = () => toolbarContents.send('content:loading-started');
-  const onLoadingStopped = () => toolbarContents.send('content:loading-stopped');
+  let progressInterval: NodeJS.Timeout | null = null;
+  let currentProgress = 0;
+
+  const startProgress = () => {
+    if (progressInterval) clearInterval(progressInterval);
+    currentProgress = 5;
+    toolbarContents.send('content:loading-progress', currentProgress);
+    
+    progressInterval = setInterval(() => {
+      if (currentProgress < 90) {
+        // Slow down as we get closer to 90
+        const increment = Math.max(1, (90 - currentProgress) / 15);
+        currentProgress += increment;
+        toolbarContents.send('content:loading-progress', Math.round(currentProgress));
+      }
+    }, 100);
+  };
+
+  const stopProgress = () => {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+    currentProgress = 100;
+    toolbarContents.send('content:loading-progress', 100);
+    
+    // Reset after a short delay so user sees it finished
+    setTimeout(() => {
+      if (!progressInterval) {
+        currentProgress = 0;
+        toolbarContents.send('content:loading-progress', 0);
+      }
+    }, 300);
+  };
+
+  const onLoadingStarted = () => {
+    toolbarContents.send('content:loading-started');
+    startProgress();
+  };
+  const onLoadingStopped = () => {
+    toolbarContents.send('content:loading-stopped');
+    stopProgress();
+  };
   const onDidNavigate = (_event: any, url: string) => {
     toolbarContents.send('content:url-changed', url);
     contentContents.setUserAgent(getUAForURL(url));
@@ -858,6 +899,10 @@ function setupToolbarIPC(
   contentContents.on('did-frame-finish-load', updateNavigationState);
 
   return () => {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
     for (const [channel, handler] of Object.entries(handlers)) {
       ipcMain.removeListener(channel, handler);
     }
