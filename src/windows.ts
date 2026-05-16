@@ -236,7 +236,7 @@ export async function createWindowWithToolbar(
   toolbar.webContents.invalidate();
 
   extensionsPromise.then((extensions) => {
-    extensions.addTab(content.webContents, content);
+    if (extensions) extensions.addTab(content.webContents, content);
   });
   await installedExtensionsPromise;
 

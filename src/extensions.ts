@@ -8,14 +8,23 @@ const CHROME_WEB_STORE_EXTENSIONS: string[] = [
   // 'ddkjiahejlhfcafbddmgiahcphecmpfh',
 ];
 
-export const extensionsPromise = sessionPromise.then((session) => {
-  return new ElectronChromeExtensions({
-    session,
-    license: 'GPL-3.0',
-    modulePath: path.join(__dirname, '../node_modules/electron-chrome-extensions'),
-  });
-});
+const hasExtensions = CHROME_WEB_STORE_EXTENSIONS.length > 0;
 
-export const installedExtensionsPromise = sessionPromise.then((session) =>
-  Promise.allSettled(CHROME_WEB_STORE_EXTENSIONS.map((id) => installExtension(id, { session }))),
-);
+// Only initialize the extensions system if there are actually extensions to load.
+// ElectronChromeExtensions spins up additional IPC handlers and intercepts web requests,
+// so skipping it when unused saves memory and startup time.
+export const extensionsPromise: Promise<ElectronChromeExtensions | null> = hasExtensions
+  ? sessionPromise.then((session) => {
+      return new ElectronChromeExtensions({
+        session,
+        license: 'GPL-3.0',
+        modulePath: path.join(__dirname, '../node_modules/electron-chrome-extensions'),
+      });
+    })
+  : Promise.resolve(null);
+
+export const installedExtensionsPromise: Promise<PromiseSettledResult<any>[]> = hasExtensions
+  ? sessionPromise.then((session) =>
+      Promise.allSettled(CHROME_WEB_STORE_EXTENSIONS.map((id) => installExtension(id, { session }))),
+    )
+  : Promise.resolve([]);
