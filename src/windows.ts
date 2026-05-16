@@ -201,15 +201,13 @@ export async function createWindowWithToolbar(
 
     if (hasAnimation) {
       const contentBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
-      const opaqueBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 255]));
-      contentBuffer.write(opaqueBlack, size.width);
+      contentBuffer.writeEmpty();
       out.placeCursor({ x: 0, y: 0 });
       const contentFrame = paintInitialFrame(contentBuffer, size, { z: 0 });
       const cRef = registerPaintedContent(contentFrame, content, contentNode);
 
       const toolbarBuffer = new ShmGraphicBuffer(size.width * size.height * 4);
-      const transparentBlack = Buffer.alloc(size.width * size.height * 4).fill(Uint8Array.from([0, 0, 0, 0]));
-      toolbarBuffer.write(transparentBlack, size.width);
+      toolbarBuffer.writeEmpty();
       out.placeCursor({ x: 0, y: 0 });
       const toolbarFrame = paintInitialFrame(toolbarBuffer, size, { z: 1 });
       const tRef = registerPaintedContent(toolbarFrame, toolbar, toolbarNode);
