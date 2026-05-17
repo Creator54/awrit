@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('ipc', {
   onDesignModeChanged: (callback) => ipcRenderer.on('awrit:design-mode-changed', (_event, active) => callback(active)),
   onSetKeyHelpVisible: (callback) => ipcRenderer.on('awrit:set-key-help-visible', (_event, data) => callback(data)),
   toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
+  toggleKeyHelp: () => ipcRenderer.send('toolbar:toggle-key-help'),
   });
 

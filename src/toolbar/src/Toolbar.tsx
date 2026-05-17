@@ -22,6 +22,7 @@ export interface BrowserToolbar {
   onDesignModeChanged: (callback: (active: boolean) => void) => void;
   onSetKeyHelpVisible: (callback: (data: { visible: boolean; bindings?: Array<{ action: string; keys: string[] }> }) => void) => void;
   toggleUrlBar: () => void;
+  toggleKeyHelp: () => void;
 }
 
 
@@ -176,7 +177,7 @@ export function Toolbar() {
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && (omniboxVisible() || keyHelp().visible)) {
         if (omniboxVisible()) window.ipc.toggleUrlBar();
-        if (keyHelp().visible) setKeyHelp({ visible: false, bindings: [] });
+        if (keyHelp().visible) window.ipc.toggleKeyHelp();
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
@@ -260,7 +261,7 @@ export function Toolbar() {
       <Show when={keyHelp().visible}>
         <div 
           class="h-screen w-screen flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
-          onClick={() => setKeyHelp({ visible: false, bindings: [] })}
+          onClick={() => window.ipc.toggleKeyHelp()}
         >
           <div 
             class="w-[500px] max-w-[90vw] bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl overflow-hidden font-sans p-6"
@@ -268,7 +269,7 @@ export function Toolbar() {
           >
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-white/90 text-lg font-semibold">Keybindings</h2>
-              <span class="text-white/30 text-xs px-2 py-1 bg-white/5 rounded">? to toggle</span>
+              <span class="text-white/30 text-xs px-2 py-1 bg-white/5 rounded">Alt+H to toggle</span>
             </div>
             
             <div class="grid grid-cols-1 gap-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -294,7 +295,7 @@ export function Toolbar() {
 
             <div class="mt-8 pt-4 border-t border-white/5 flex justify-center">
               <button 
-                onClick={() => setKeyHelp({ visible: false, bindings: [] })}
+                onClick={() => window.ipc.toggleKeyHelp()}
                 class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/90 text-sm rounded-lg transition-all"
               >
                 Close

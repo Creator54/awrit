@@ -611,6 +611,7 @@ function setupToolbarIPC(
     'toolbar:navigate-refresh': () => contentContents.reload(),
     'toolbar:navigate-to': (_e: any, url: string) => contentContents.loadURL(url),
     'toolbar:toggle-url-bar': () => view.toggleOmnibox(),
+    'toolbar:toggle-key-help': () => view.toggleKeyHelp(),
     'toolbar:close': () => view.omniboxVisible && view.toggleOmnibox(),
     'omnibox:escape': () => view.omniboxVisible && view.toggleOmnibox(),
   };

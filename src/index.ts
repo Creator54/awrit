@@ -80,7 +80,8 @@ function loadConfig(config: typeof import('../config.js')) {
     const designToggleKey = (config.urlBar as any)?.designToggleKey || '<A-d>';
     bindings[designToggleKey] = function toggleDesignMode({ view }: { view?: WindowView }) { view?.toggleDesignMode(); };
 
-    bindings['?'] = function toggleKeyHelp({ view }: { view?: WindowView }) { view?.toggleKeyHelp(); };
+    const helpToggleKey = (config.urlBar as any)?.helpToggleKey || '<A-h>';
+    bindings[helpToggleKey] = function toggleKeyHelp({ view }: { view?: WindowView }) { view?.toggleKeyHelp(); };
 
     loadKeyBindings({ keybindings: bindings });
   }

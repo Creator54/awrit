@@ -125,7 +125,7 @@ export function handleInput(evt: TermEvent): boolean {
       const dpr = layoutContainer.devicePixelRatio;
 
       const isOverlayActive = view.omniboxVisible || view.keyHelpVisible;
-      const isInToolbar = isOverlayActive && rawY < contentNode.deviceLayout.y;
+      const isInToolbar = isOverlayActive;
 
       const targetWindow = isInToolbar ? view.toolbar : view.content;
       const targetContents = targetWindow.webContents;
