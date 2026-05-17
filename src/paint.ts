@@ -77,9 +77,9 @@ export function registerPaintedContent(
     if ((w as any).isSuppressingPaint) {
       (w as any).paintCount = ((w as any).paintCount || 0) + 1;
       
-      // We wait for 10 frames (~300ms) as a base.
+      // We wait for 5 frames (~80ms at 60fps) as a base.
       // Combined with the whiteness filter below, this is plenty.
-      if ((w as any).paintCount >= 10) {
+      if ((w as any).paintCount >= 5) {
         w.emit('content-ready');
       }
       return;
@@ -169,7 +169,7 @@ export function registerPaintedContentFallback(
 
     if ((w as any).isSuppressingPaint) {
       (w as any).paintCount = ((w as any).paintCount || 0) + 1;
-      if ((w as any).paintCount >= 10) {
+      if ((w as any).paintCount >= 5) {
         w.emit('content-ready');
       }
       return;

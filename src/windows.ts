@@ -333,9 +333,9 @@ export async function createWindowWithToolbar(
   content.webContents.invalidate();
 
   // Limit offscreen rendering frame rate to reduce CPU usage.
-  // Terminals can't display faster than ~30fps anyway.
-  content.webContents.setFrameRate(30);
-  toolbar.webContents.setFrameRate(15); // Toolbar is mostly static
+  // Terminals can't display faster than ~60fps anyway.
+  content.webContents.setFrameRate(60);
+  toolbar.webContents.setFrameRate(30); // Toolbar is mostly static
 
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
@@ -415,11 +415,11 @@ export async function createWindowWithToolbar(
   });
 
   content.webContents.on('did-finish-load', () => {
-    stopSuppression(500);
+    stopSuppression(100);
   });
 
   content.webContents.on('did-stop-loading', () => {
-    stopSuppression(750);
+    stopSuppression(200);
   });
 
   content.webContents.on('did-fail-load', () => {
