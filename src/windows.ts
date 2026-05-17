@@ -244,9 +244,8 @@ export async function createWindowWithToolbar(
     toolbar.webContents.invalidate();
   }
 
-  if (omniboxVisible) {
-    loadToolbarContent();
-  }
+  // Eagerly load the toolbar to prevent offscreen focus black holes
+  loadToolbarContent();
 
   extensionsPromise.then((extensions) => {
     if (extensions) extensions.addTab(content.webContents, content);
@@ -269,12 +268,14 @@ export async function createWindowWithToolbar(
   toolbar.focusOnWebView = () => {
     focusedView.current = view;
     view.focusedContent = toolbar.webContents;
+    toolbar.focus();
     toolbar.webContents.focus();
   };
   // @ts-expect-error
   content.focusOnWebView = () => {
     focusedView.current = view;
     view.focusedContent = content.webContents;
+    content.focus();
     content.webContents.focus();
   };
 
@@ -564,10 +565,8 @@ export async function createWindowWithToolbar(
   ipcMain.on('awrit:request-secure-login', onRequestSecureLogin);
 
   toolbar.webContents.on('did-finish-load', () => {
-    // Only force hidden if we loaded it in the background or during toggle off
-    if (!view.omniboxVisible) {
-      toolbar.webContents.send('omnibox:set-visible', false);
-    }
+    // Send the correct initial state to the toolbar to prevent desync
+    toolbar.webContents.send('omnibox:set-visible', view.omniboxVisible);
   });
 
   // Trigger an initial relayout to ensure focus and size are perfectly synced

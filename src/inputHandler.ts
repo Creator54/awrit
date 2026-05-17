@@ -15,7 +15,6 @@ let lastSentX = -1;
 let lastSentY = -1;
 let lastSentView: any = null;
 let lastSentMods = '';
-let hasWarmedUp = false;
 
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
 
@@ -52,11 +51,6 @@ export function handleInput(evt: TermEvent): boolean {
       const webContents = targetWindow.webContents;
       
       // FORCED FOCUS: Ensure the renderer is active before every event
-      if (!hasWarmedUp) {
-        hasWarmedUp = true;
-        targetWindow.blur();
-      }
-      targetWindow.focus();
       webContents.focus();
       
       const { code, modifiers, down, isCharEvent } = evt.keyEvent;
@@ -137,7 +131,6 @@ export function handleInput(evt: TermEvent): boolean {
       const targetContents = targetWindow.webContents;
 
       // FORCED FOCUS: Ensure the renderer is active before every event
-      targetWindow.focus();
       targetContents.focus();
       view.focusedContent = targetContents;
 

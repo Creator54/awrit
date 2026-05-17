@@ -8,7 +8,7 @@ const homepage = 'https://google.com';
  **/
 const urlBar = {
   /** Show URL bar by default on startup */
-  defaultVisible: true,
+  defaultVisible: false,
   /** Keybind to toggle URL bar visibility */
   toggleKey: '<C-l>',
 };
