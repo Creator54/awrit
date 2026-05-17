@@ -68,8 +68,22 @@ export function registerPaintedContent(
 
   async function paint(_: any, dirty: Rectangle, image: NativeImage) {
     if (destroyed) return;
+
     const imageSize = image.getSize();
     if (imageSize.width === 0 || imageSize.height === 0) return;
+
+    // Content Detection logic for Zero-Latency Swap
+    // We count frames even while suppressing so we know when the site is ready.
+    if ((w as any).isSuppressingPaint) {
+      (w as any).paintCount = ((w as any).paintCount || 0) + 1;
+      
+      // We wait for 10 frames (~300ms) as a base.
+      // Combined with the whiteness filter below, this is plenty.
+      if ((w as any).paintCount >= 10) {
+        w.emit('content-ready');
+      }
+      return;
+    }
 
     const imageBufferSize = imageSize.width * imageSize.height * 4;
     
@@ -80,11 +94,28 @@ export function registerPaintedContent(
       result.buffer = new ShmGraphicBuffer(imageBufferSize);
       result.size = imageBufferSize;
     }
-    if (options['debug-paint']) {
-      console_.error('paint', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
-    }
 
     const buffer = image.toBitmap();
+
+    // Flash Killer: Check if the frame is mostly white.
+    // If it is, and we just started, keep it hidden.
+    // We only check for the first 30 frames to keep performance high.
+    if ((w as any).paintCount < 30) {
+      let whitePixels = 0;
+      const totalPixels = imageSize.width * imageSize.height;
+      // Sample 100 pixels to check for whiteness
+      for (let i = 0; i < 100; i++) {
+        const idx = Math.floor(Math.random() * totalPixels) * 4;
+        if (buffer[idx] > 240 && buffer[idx+1] > 240 && buffer[idx+2] > 240) {
+          whitePixels++;
+        }
+      }
+      if (whitePixels > 90) { // More than 90% white sample
+        (w as any).paintCount++; 
+        return;
+      }
+    }
+
     result.buffer.write(buffer, imageSize.width);
 
     startBatch();
@@ -136,6 +167,14 @@ export function registerPaintedContentFallback(
     const imageSize = image.getSize();
     if (imageSize.width === 0 || imageSize.height === 0) return;
 
+    if ((w as any).isSuppressingPaint) {
+      (w as any).paintCount = ((w as any).paintCount || 0) + 1;
+      if ((w as any).paintCount >= 10) {
+        w.emit('content-ready');
+      }
+      return;
+    }
+
     const imageBufferSize = imageSize.width * imageSize.height * 4;
 
     // Recompute cell metrics on every paint so they stay correct after resize
@@ -174,6 +213,22 @@ export function registerPaintedContentFallback(
 
     if (replace && paintedImage) {
       const bitmap = image.toBitmap();
+
+      // Flash Killer for Fallback mode
+      if ((w as any).paintCount < 60) {
+        let whitePixels = 0;
+        const totalPixels = imageSize.width * imageSize.height;
+        for (let i = 0; i < 100; i++) {
+          const idx = Math.floor(Math.random() * totalPixels) * 4;
+          if (bitmap[idx] > 240 && bitmap[idx+1] > 240 && bitmap[idx+2] > 240) {
+            whitePixels++;
+          }
+        }
+        if (whitePixels > 90) {
+          (w as any).paintCount++;
+          return;
+        }
+      }
       
       startBatch();
       try {

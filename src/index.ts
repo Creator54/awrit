@@ -14,6 +14,7 @@ if (!options.dev) {
 out.setup();
 
 import { app, dialog, ipcMain, nativeTheme, Menu } from 'electron';
+
 import {
   termEnableFeatures,
   listenForInput,

@@ -235,14 +235,10 @@ export function handleInput(evt: TermEvent): boolean {
 
       if (kind === 'mouseDown' && button === 'left') {
         if (targetContents === view.content.webContents) {
-          // @ts-expect-error
           view.toolbar.blurWebView();
-          // @ts-expect-error
           view.content.focusOnWebView();
         } else {
-          // @ts-expect-error
           view.content.blurWebView();
-          // @ts-expect-error
           view.toolbar.focusOnWebView();
         }
       }

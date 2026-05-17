@@ -75,6 +75,8 @@ export type WindowView = {
   toggleDesignMode: () => void;
   toggleKeyHelp: () => void;
   destroy: () => void;
+  startSuppression: () => void;
+  stopSuppression: (delay?: number) => void;
 } & Actions;
 
 export const focusedView: {
@@ -179,8 +181,9 @@ export async function createWindowWithToolbar(
   const content = new BrowserWindow({
     ...sharedConstructorOptions,
     ...contentNode.computedLayout,
-    transparent: !!options.transparent,
-    ...(options.transparent ? transparentWindowSettings : {}),
+    ...(options.transparent
+      ? { transparent: true, backgroundColor: '#00000000' }
+      : { transparent: false, backgroundColor: '#000000' }),
     webPreferences: {
       zoomFactor: 1,
       session: await sessionPromise,
@@ -192,11 +195,83 @@ export async function createWindowWithToolbar(
       disableBlinkFeatures: 'AutomationControlled',
       preload: path.resolve(__dirname, '../dist/content-preload.js'),
     },
-    backgroundColor: '#000000',
   });
+
+  // @ts-expect-error - dynamic property for paint suppression
+  content.isSuppressingPaint = false;
+  // @ts-expect-error
+  content.paintCount = 0;
 
   const destructors: Array<() => void> = [];
   const refreshers: Array<() => void> = [];
+
+  let suppressionTimeout: NodeJS.Timeout | null = null;
+
+  const startSuppression = () => {
+    // @ts-expect-error
+    content.isSuppressingPaint = true;
+    // We do NOT suppress the toolbar anymore, so the progress bar stays visible
+    // @ts-expect-error
+    content.paintCount = 0;
+    
+    if (!options.transparent) {
+      content.setBackgroundColor('#000000');
+    }
+
+    // Safety timeout: never suppress for more than 5 seconds
+    if (suppressionTimeout) clearTimeout(suppressionTimeout);
+    suppressionTimeout = setTimeout(() => {
+       // @ts-expect-error
+       content.isSuppressingPaint = false;
+       content.webContents.invalidate();
+       suppressionTimeout = null;
+    }, 5000);
+  };
+
+  const stopSuppression = (delay = 300, force = false) => {
+    if (suppressionTimeout) clearTimeout(suppressionTimeout);
+    
+    const execute = () => {
+      // @ts-expect-error
+      content.isSuppressingPaint = false;
+      content.webContents.invalidate();
+      suppressionTimeout = null;
+    };
+
+    if (force) {
+      execute();
+      return;
+    }
+
+    suppressionTimeout = setTimeout(() => {
+      if (!content.webContents.isLoading() || delay === 0) {
+        execute();
+      } else {
+        // Still loading, extend suppression
+        stopSuppression(delay);
+      }
+    }, delay);
+  };
+
+  content.on('content-ready' as any, () => {
+    console_.log('[Navigation] Content-ready detected (45 frames), reveal starting...');
+    stopSuppression(0, true);
+  });
+
+  content.webContents.on('did-navigate', () => {
+    if (!options.transparent) {
+      // Inject white background as a user stylesheet.
+      // This ensures sites without explicit backgrounds are legible,
+      // but allows site-defined backgrounds to take precedence.
+      // Because the window background is PERMANENTLY black, there is no flash.
+      content.webContents.insertCSS('html { background-color: white; }', { cssOrigin: 'user' });
+    }
+  });
+
+  content.webContents.on('dom-ready', () => {
+    // Site has parsed its HTML, likely has content/loader to show.
+    stopSuppression(1000);
+  });
 
   function registerPaints(size: WindowDimensions) {
     destructors.forEach((d) => { d(); });
@@ -253,6 +328,7 @@ export async function createWindowWithToolbar(
   await installedExtensionsPromise;
 
   resetForFrameQuirk(content.webContents);
+  startSuppression();
   content.webContents.loadURL(initialUrl);
   content.webContents.invalidate();
 
@@ -264,14 +340,12 @@ export async function createWindowWithToolbar(
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
-  // @ts-expect-error - monkey patch for focus management
   toolbar.focusOnWebView = () => {
     focusedView.current = view;
     view.focusedContent = toolbar.webContents;
     toolbar.focus();
     toolbar.webContents.focus();
   };
-  // @ts-expect-error
   content.focusOnWebView = () => {
     focusedView.current = view;
     view.focusedContent = content.webContents;
@@ -279,9 +353,7 @@ export async function createWindowWithToolbar(
     content.webContents.focus();
   };
 
-  // @ts-expect-error
   toolbar.blurWebView = () => {};
-  // @ts-expect-error
   content.blurWebView = () => {};
 
   // Handle new window requests transparently
@@ -294,9 +366,15 @@ export async function createWindowWithToolbar(
   toolbar.webContents.setWindowOpenHandler(handleNewWindow);
   content.webContents.setWindowOpenHandler(handleNewWindow);
 
+  content.webContents.on('will-navigate', (event, url) => {
+    console_.log(`[Navigation] Will navigate to: ${url}, freezing display...`);
+    startSuppression();
+  });
+
   content.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
-    if (isMainFrame) {
-      console_.log(`[Navigation] Main frame navigating to: ${url}`);
+    if (isMainFrame && !isInPlace) {
+      console_.log(`[Navigation] Main frame hard navigation to: ${url}, ensuring display freeze...`);
+      startSuppression();
 
       const provider = getProviderForUrl(url);
       if (provider) {
@@ -304,6 +382,8 @@ export async function createWindowWithToolbar(
         
         // Prevent the navigation in Electron
         event.preventDefault();
+        // Clear suppression since we're not actually navigating
+        stopSuppression(0);
         
         // Show a helpful message in awrit
         content.webContents.executeJavaScript(`
@@ -334,6 +414,18 @@ export async function createWindowWithToolbar(
     }
   });
 
+  content.webContents.on('did-finish-load', () => {
+    stopSuppression(500);
+  });
+
+  content.webContents.on('did-stop-loading', () => {
+    stopSuppression(750);
+  });
+
+  content.webContents.on('did-fail-load', () => {
+    stopSuppression(0);
+  });
+
   let relayoutScheduled = false;
   let lastWidth = size.width;
   let lastHeight = size.height;
@@ -349,6 +441,8 @@ export async function createWindowWithToolbar(
     omniboxVisible,
     designMode: !!options.design,
     keyHelpVisible: false,
+    startSuppression,
+    stopSuppression,
     refresh() {
       refreshers.forEach((r) => { r(); });
     },
@@ -384,53 +478,51 @@ export async function createWindowWithToolbar(
 
         if (this.omniboxVisible) view.toolbar.focusOnWebView();
         else view.content.focusOnWebView();
-      });
-    },
-    toggleOmnibox() {
-      this.omniboxVisible = !this.omniboxVisible;
-      
-      if (this.omniboxVisible) {
-        loadToolbarContent();
-      }
+        });
+        },
+        toggleOmnibox() {
+        this.omniboxVisible = !this.omniboxVisible;
 
-      const sendSignal = () => {
+        if (this.omniboxVisible) {
+        loadToolbarContent();
+        }
+
+        const sendSignal = () => {
         if (!this.toolbar.webContents.isLoading()) {
           this.toolbar.webContents.send('omnibox:set-visible', this.omniboxVisible);
         }
-      };
-      
-      // Wait for load to finish if we just loaded it
-      if (this.omniboxVisible && this.toolbar.webContents.isLoading()) {
+        };
+
+        // Wait for load to finish if we just loaded it
+        if (this.omniboxVisible && this.toolbar.webContents.isLoading()) {
         this.toolbar.webContents.once('did-finish-load', sendSignal);
-      } else {
+        } else {
         sendSignal();
         setTimeout(sendSignal, 100);
-      }
+        }
 
-      this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible && !this.keyHelpVisible);
-      if (this.omniboxVisible) {
-        // @ts-expect-error
+        this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible && !this.keyHelpVisible);
+        if (this.omniboxVisible) {
         this.toolbar.focusOnWebView();
         this.toolbar.focus();
-      } else {
-        // @ts-expect-error
+        } else {
         this.content.focusOnWebView();
         this.content.focus();
-      }
-    },
-    toggleDesignMode() {
-      this.designMode = !this.designMode;
-      console_.log(`[Design Mode] ${this.designMode ? 'ENABLED' : 'DISABLED'}`);
-      this.content.webContents.send('awrit:set-design-mode', this.designMode);
-      this.toolbar.webContents.send('awrit:design-mode-changed', this.designMode);
-    },
-    toggleKeyHelp() {
-      this.keyHelpVisible = !this.keyHelpVisible;
-      
-      if (this.keyHelpVisible) {
+        }
+        },
+        toggleDesignMode() {
+        this.designMode = !this.designMode;
+        console_.log(`[Design Mode] ${this.designMode ? 'ENABLED' : 'DISABLED'}`);
+        this.content.webContents.send('awrit:set-design-mode', this.designMode);
+        this.toolbar.webContents.send('awrit:design-mode-changed', this.designMode);
+        },
+        toggleKeyHelp() {
+        this.keyHelpVisible = !this.keyHelpVisible;
+
+        if (this.keyHelpVisible) {
         loadToolbarContent();
         const bindings = getAllKeyBindings();
-        
+
         const sendSignal = () => {
           this.toolbar.webContents.send('awrit:set-key-help-visible', {
             visible: this.keyHelpVisible,
@@ -444,22 +536,19 @@ export async function createWindowWithToolbar(
           sendSignal();
           setTimeout(sendSignal, 100);
         }
-        
-        // @ts-expect-error
+
         this.toolbar.focusOnWebView();
         this.toolbar.focus();
-      } else {
+        } else {
         this.toolbar.webContents.send('awrit:set-key-help-visible', { visible: false });
-        // @ts-expect-error
         this.content.focusOnWebView();
         this.content.focus();
-      }
-      
-      this.toolbar.setIgnoreMouseEvents(!this.keyHelpVisible && !this.omniboxVisible);
-    },
-    back: () => content.webContents.goBack(),
-    forward: () => content.webContents.goForward(),
-    reload: () => content.webContents.reload(),
+        }
+
+        this.toolbar.setIgnoreMouseEvents(!this.keyHelpVisible && !this.omniboxVisible);
+        },    back: () => { startSuppression(); content.webContents.goBack(); },
+    forward: () => { startSuppression(); content.webContents.goForward(); },
+    reload: () => { startSuppression(); content.webContents.reload(); },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
@@ -518,10 +607,8 @@ export async function createWindowWithToolbar(
 
   const establishFocus = () => {
     if (view.omniboxVisible || view.keyHelpVisible) {
-      // @ts-expect-error
       view.toolbar.focusOnWebView();
     } else {
-      // @ts-expect-error
       view.content.focusOnWebView();
     }
   };
@@ -606,10 +693,26 @@ function setupToolbarIPC(
   view: WindowView,
 ) {
   const handlers: Record<string, any> = {
-    'toolbar:navigate-back': () => contentContents.navigationHistory.canGoBack() && contentContents.navigationHistory.goBack(),
-    'toolbar:navigate-forward': () => contentContents.navigationHistory.canGoForward() && contentContents.navigationHistory.goForward(),
-    'toolbar:navigate-refresh': () => contentContents.reload(),
-    'toolbar:navigate-to': (_e: any, url: string) => contentContents.loadURL(url),
+    'toolbar:navigate-back': () => {
+      if (contentContents.navigationHistory.canGoBack()) {
+        view.startSuppression();
+        contentContents.navigationHistory.goBack();
+      }
+    },
+    'toolbar:navigate-forward': () => {
+      if (contentContents.navigationHistory.canGoForward()) {
+        view.startSuppression();
+        contentContents.navigationHistory.goForward();
+      }
+    },
+    'toolbar:navigate-refresh': () => {
+      view.startSuppression();
+      contentContents.reload();
+    },
+    'toolbar:navigate-to': (_e: any, url: string) => {
+      view.startSuppression();
+      contentContents.loadURL(url);
+    },
     'toolbar:toggle-url-bar': () => view.toggleOmnibox(),
     'toolbar:toggle-key-help': () => view.toggleKeyHelp(),
     'toolbar:close': () => view.omniboxVisible && view.toggleOmnibox(),
