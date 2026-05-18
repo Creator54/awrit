@@ -212,8 +212,6 @@ export function Toolbar() {
     } else if (e.key === 'ArrowUp') {
       setSelectedIndex(prev => Math.max(prev - 1, 0));
       e.preventDefault();
-    } else if (e.key === 'Escape') {
-      window.ipc.toggleUrlBar();
     }
   };
 
@@ -263,9 +261,6 @@ export function Toolbar() {
     if (e.key === 'Enter') {
       debouncedFindInPage.cancel();
       performSearch(findText(), { findNext: true, forward: !e.shiftKey });
-    } else if (e.key === 'Escape') {
-      setFindVisible(false);
-      window.ipc.stopFindInPage();
     }
   };
 
@@ -276,12 +271,16 @@ export function Toolbar() {
     } catch (_e) {}
 
     const handleGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && (omniboxVisible() || keyHelp().visible || findVisible())) {
-        if (omniboxVisible()) window.ipc.toggleUrlBar();
-        if (keyHelp().visible) window.ipc.toggleKeyHelp();
-        if (findVisible()) {
-          setFindVisible(false);
-          window.ipc.stopFindInPage();
+      if (e.key === 'Escape') {
+        if (omniboxVisible()) {
+          window.ipc.toggleUrlBar();
+          e.stopPropagation();
+        } else if (keyHelp().visible) {
+          window.ipc.toggleKeyHelp();
+          e.stopPropagation();
+        } else if (findVisible()) {
+          window.ipc.toggleFind();
+          e.stopPropagation();
         }
       }
     };
