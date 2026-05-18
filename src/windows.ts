@@ -369,13 +369,15 @@ export async function createWindowWithToolbar(
   content.webContents.setWindowOpenHandler(handleNewWindow);
 
   content.webContents.on('will-navigate', (event, url) => {
-    console_.log(`[Navigation] Will navigate to: ${url}, freezing display...`);
+    const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
+    console_.log(`[Navigation] Will navigate to: ${displayUrl}, freezing display...`);
     startSuppression();
   });
 
   content.webContents.on('did-start-navigation', (event, url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
-      console_.log(`[Navigation] Main frame hard navigation to: ${url}, ensuring display freeze...`);
+      const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
+      console_.log(`[Navigation] Main frame hard navigation to: ${displayUrl}, ensuring display freeze...`);
       startSuppression();
 
       const provider = getProviderForUrl(url);

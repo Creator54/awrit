@@ -336,7 +336,7 @@ export function generateErrorPage({ errorCode, errorDescription, failedUrl }: Er
 
     <h1>${info.title}</h1>
 
-    <div class="url">${displayUrl}</div>
+    ${failedUrl.startsWith('data:') ? '' : `<div class="url">${displayUrl}</div>`}
 
     <div class="tips">
       <div class="tips-label">Things to try</div>

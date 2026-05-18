@@ -141,6 +141,36 @@ export function Toolbar() {
     });
   };
 
+  const getUrlOrSearch = (input: string): { url: string; title: string; isSearch: boolean } => {
+    const trimmed = input.trim();
+    if (!trimmed) return { url: '', title: '', isSearch: false };
+
+    // 1. Already has a protocol?
+    if (/^[a-z]+:\/\//i.test(trimmed)) {
+      return { url: trimmed, title: `Go to ${trimmed}`, isSearch: false };
+    }
+
+    // 2. Heuristics for a URL without protocol:
+    // - No spaces
+    // - Contains a dot (e.g. example.com) OR is 'localhost'
+    const hasDot = trimmed.includes('.');
+    const isLocalhost = trimmed.split(/[:\/]/)[0] === 'localhost';
+    const hasSpace = trimmed.includes(' ');
+
+    if (!hasSpace && (hasDot || isLocalhost)) {
+      const protocol = isLocalhost ? 'http://' : 'https://';
+      const url = protocol + trimmed;
+      return { url, title: `Go to ${url}`, isSearch: false };
+    }
+
+    // 3. Fallback to search
+    return {
+      url: `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`,
+      title: `Search Google for "${trimmed}"`,
+      isSearch: true,
+    };
+  };
+
   const getSuggestions = (): Suggestion[] => {
     const currentInput = url().trim();
     if (!currentInput) return history().map(h => ({ ...h, type: 'history' }));
@@ -150,11 +180,14 @@ export function Toolbar() {
       h.url.toLowerCase().includes(currentInput.toLowerCase())
     );
 
-    const isUrl = currentInput.includes('.') && !currentInput.includes(' ');
+    const { url: resolvedUrl, title, isSearch } = getUrlOrSearch(currentInput);
     
-    const action: Suggestion = isUrl 
-      ? { title: `Go to ${currentInput}`, url: currentInput, isSearch: false, type: 'action' }
-      : { title: `Search Google for "${currentInput}"`, url: `https://www.google.com/search?q=${encodeURIComponent(currentInput)}`, isSearch: true, type: 'action' };
+    const action: Suggestion = { 
+      title, 
+      url: resolvedUrl, 
+      isSearch, 
+      type: 'action' 
+    };
 
     return [action, ...filteredHistory.map(h => ({ ...h, type: 'history' }))];
   };
@@ -199,9 +232,18 @@ export function Toolbar() {
     window.ipc.toggleUrlBar();
   };
 
+  let lastSearchedText = '';
+
+  const performSearch = (text: string, options?: any) => {
+    if (text === lastSearchedText && !options?.findNext) return;
+    
+    window.ipc.findInPage(text, options);
+    lastSearchedText = text;
+  };
+
   const debouncedFindInPage = debounce((text: string) => {
-    window.ipc.findInPage(text);
-  }, 200);
+    performSearch(text);
+  }, 250);
 
   const handleFindInput = (e: InputEvent) => {
     const text = (e.target as HTMLInputElement).value;
@@ -210,6 +252,7 @@ export function Toolbar() {
       debouncedFindInPage(text);
     } else {
       debouncedFindInPage.cancel();
+      lastSearchedText = '';
       setActiveMatch(0);
       setTotalMatches(0);
       window.ipc.stopFindInPage();
@@ -218,9 +261,8 @@ export function Toolbar() {
 
   const handleFindKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (findText()) {
-        window.ipc.findInPage(findText(), { findNext: true, forward: !e.shiftKey });
-      }
+      debouncedFindInPage.cancel();
+      performSearch(findText(), { findNext: true, forward: !e.shiftKey });
     } else if (e.key === 'Escape') {
       setFindVisible(false);
       window.ipc.stopFindInPage();
