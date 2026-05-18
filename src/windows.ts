@@ -66,12 +66,14 @@ export type WindowView = {
   toolbarNode: LayoutNode;
   contentNode: LayoutNode;
   omniboxVisible: boolean;
+  findVisible: boolean;
   designMode: boolean;
   keyHelpVisible: boolean;
   destroyed?: boolean;
   refresh: () => void;
   relayout: (force?: boolean) => void;
   toggleOmnibox: () => void;
+  toggleFind: () => void;
   toggleDesignMode: () => void;
   toggleKeyHelp: () => void;
   destroy: () => void;
@@ -439,6 +441,7 @@ export async function createWindowWithToolbar(
     toolbarNode,
     contentNode,
     omniboxVisible,
+    findVisible: false,
     designMode: !!options.design,
     keyHelpVisible: false,
     startSuppression,
@@ -476,7 +479,7 @@ export async function createWindowWithToolbar(
         toolbar.webContents.invalidate();
         content.webContents.invalidate();
 
-        if (this.omniboxVisible) view.toolbar.focusOnWebView();
+        if (this.omniboxVisible || this.findVisible) view.toolbar.focusOnWebView();
         else view.content.focusOnWebView();
         });
         },
@@ -484,6 +487,7 @@ export async function createWindowWithToolbar(
         this.omniboxVisible = !this.omniboxVisible;
 
         if (this.omniboxVisible) {
+        this.findVisible = false;
         loadToolbarContent();
         }
 
@@ -501,13 +505,41 @@ export async function createWindowWithToolbar(
         setTimeout(sendSignal, 100);
         }
 
-        this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible && !this.keyHelpVisible);
+        this.toolbar.setIgnoreMouseEvents(!this.omniboxVisible && !this.keyHelpVisible && !this.findVisible);
         if (this.omniboxVisible) {
         this.toolbar.focusOnWebView();
         this.toolbar.focus();
         } else {
         this.content.focusOnWebView();
         this.content.focus();
+        }
+        },
+        toggleFind() {
+        this.findVisible = !this.findVisible;
+        if (this.findVisible) {
+          this.omniboxVisible = false;
+          loadToolbarContent();
+        }
+
+        const sendSignal = () => {
+          if (!this.toolbar.webContents.isLoading()) {
+            this.toolbar.webContents.send('toolbar:toggle-find');
+          }
+        };
+
+        if (this.findVisible && this.toolbar.webContents.isLoading()) {
+          this.toolbar.webContents.once('did-finish-load', sendSignal);
+        } else {
+          sendSignal();
+        }
+
+        this.toolbar.setIgnoreMouseEvents(!this.findVisible && !this.omniboxVisible && !this.keyHelpVisible);
+        if (this.findVisible) {
+          this.toolbar.focusOnWebView();
+          this.toolbar.focus();
+        } else {
+          this.content.focusOnWebView();
+          this.content.focus();
         }
         },
         toggleDesignMode() {
@@ -520,6 +552,7 @@ export async function createWindowWithToolbar(
         this.keyHelpVisible = !this.keyHelpVisible;
 
         if (this.keyHelpVisible) {
+        this.findVisible = false;
         loadToolbarContent();
         const bindings = getAllKeyBindings();
 
@@ -545,8 +578,9 @@ export async function createWindowWithToolbar(
         this.content.focus();
         }
 
-        this.toolbar.setIgnoreMouseEvents(!this.keyHelpVisible && !this.omniboxVisible);
-        },    back: () => { startSuppression(); content.webContents.goBack(); },
+        this.toolbar.setIgnoreMouseEvents(!this.keyHelpVisible && !this.omniboxVisible && !this.findVisible);
+        },
+    back: () => { startSuppression(); content.webContents.goBack(); },
     forward: () => { startSuppression(); content.webContents.goForward(); },
     reload: () => { startSuppression(); content.webContents.reload(); },
     destroy: () => {
@@ -603,10 +637,10 @@ export async function createWindowWithToolbar(
   const ipcCleanup = setupToolbarIPC(toolbar.webContents, content.webContents, view);
 
   // Set initial mouse event ignore state for the toolbar overlay
-  toolbar.setIgnoreMouseEvents(!view.omniboxVisible && !view.keyHelpVisible);
+  toolbar.setIgnoreMouseEvents(!view.omniboxVisible && !view.keyHelpVisible && !view.findVisible);
 
   const establishFocus = () => {
-    if (view.omniboxVisible || view.keyHelpVisible) {
+    if (view.omniboxVisible || view.keyHelpVisible || view.findVisible) {
       view.toolbar.focusOnWebView();
     } else {
       view.content.focusOnWebView();
@@ -715,8 +749,15 @@ function setupToolbarIPC(
     },
     'toolbar:toggle-url-bar': () => view.toggleOmnibox(),
     'toolbar:toggle-key-help': () => view.toggleKeyHelp(),
-    'toolbar:close': () => view.omniboxVisible && view.toggleOmnibox(),
-    'omnibox:escape': () => view.omniboxVisible && view.toggleOmnibox(),
+    'toolbar:toggle-find': () => view.toggleFind(),
+    'toolbar:close': () => {
+      if (view.omniboxVisible) view.toggleOmnibox();
+      if (view.findVisible) view.toggleFind();
+    },
+    'omnibox:escape': () => {
+      if (view.omniboxVisible) view.toggleOmnibox();
+      if (view.findVisible) view.toggleFind();
+    },
   };
 
   for (const [channel, handler] of Object.entries(handlers)) ipcMain.on(channel, handler);
@@ -758,6 +799,13 @@ function setupToolbarIPC(
       canGoForward: contentContents.navigationHistory.canGoForward(),
     });
   };
+
+  contentContents.on('found-in-page', (_event, result) => {
+    toolbarContents.send('toolbar:find-result', {
+      activeMatchOrdinal: result.activeMatchOrdinal,
+      matches: result.matches,
+    });
+  });
 
   contentContents.on('did-start-loading', onLoadingStarted);
   contentContents.on('did-stop-loading', onLoadingStopped);

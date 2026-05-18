@@ -25,7 +25,9 @@ contextBridge.exposeInMainWorld('ipc', {
   onSetUrlBarVisible: (callback) => ipcRenderer.on('omnibox:set-visible', (_event, visible) => callback(visible)),
   onDesignModeChanged: (callback) => ipcRenderer.on('awrit:design-mode-changed', (_event, active) => callback(active)),
   onSetKeyHelpVisible: (callback) => ipcRenderer.on('awrit:set-key-help-visible', (_event, data) => callback(data)),
+  onFindResult: (callback) => ipcRenderer.on('toolbar:find-result', (_event, result) => callback(result)),
   toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
   toggleKeyHelp: () => ipcRenderer.send('toolbar:toggle-key-help'),
+  toggleFind: () => ipcRenderer.send('toolbar:toggle-find'),
   });
 

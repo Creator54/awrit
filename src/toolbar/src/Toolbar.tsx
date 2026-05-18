@@ -1,4 +1,5 @@
 import { createSignal, Show, onMount, onCleanup, For } from 'solid-js';
+import { debounce } from '../../debounce';
 
 export interface NavigationState {
   canGoBack: boolean;
@@ -10,8 +11,10 @@ export interface BrowserToolbar {
   navigateForward: () => void;
   refresh: () => void;
   navigateTo: (url: string) => void;
+  findInPage: (text: string, options?: any) => void;
   stopFindInPage: () => void;
   onToggleFind: (callback: () => void) => void;
+  onFindResult: (callback: (result: { activeMatchOrdinal: number; matches: number }) => void) => void;
   onUrlChanged: (callback: (url: string) => void) => void;
   onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
   onLoadingStarted: (callback: () => void) => void;
@@ -23,6 +26,7 @@ export interface BrowserToolbar {
   onSetKeyHelpVisible: (callback: (data: { visible: boolean; bindings?: Array<{ action: string; keys: string[] }> }) => void) => void;
   toggleUrlBar: () => void;
   toggleKeyHelp: () => void;
+  toggleFind: () => void;
 }
 
 
@@ -47,6 +51,10 @@ export function Toolbar() {
   const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [url, setUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
+  const [findVisible, setFindVisible] = createSignal(false);
+  const [findText, setFindText] = createSignal('');
+  const [activeMatch, setActiveMatch] = createSignal(0);
+  const [totalMatches, setTotalMatches] = createSignal(0);
   const [keyHelp, setKeyHelp] = createSignal<{ visible: boolean; bindings: Array<{ action: string; keys: string[] }> }>({ 
     visible: false, 
     bindings: [] 
@@ -59,6 +67,7 @@ export function Toolbar() {
   });
 
   let inputRef: HTMLInputElement | undefined;
+  let findInputRef: HTMLInputElement | undefined;
 
   window.ipc.onUrlChanged((newUrl: string) => {
     setUrl(newUrl);
@@ -86,12 +95,34 @@ export function Toolbar() {
     console.log('[Toolbar] Visibility received:', visible);
     setOmniboxVisible(visible);
     if (visible) {
+      setFindVisible(false);
       setSelectedIndex(0);
       setTimeout(() => {
         inputRef?.focus();
         inputRef?.select();
       }, 50);
     }
+  });
+
+  window.ipc.onToggleFind(() => {
+    const visible = !findVisible();
+    setFindVisible(visible);
+    if (visible) {
+      setOmniboxVisible(false);
+      setTimeout(() => {
+        findInputRef?.focus();
+        findInputRef?.select();
+      }, 50);
+    } else {
+      setActiveMatch(0);
+      setTotalMatches(0);
+      window.ipc.stopFindInPage();
+    }
+  });
+
+  window.ipc.onFindResult((result) => {
+    setActiveMatch(result.activeMatchOrdinal);
+    setTotalMatches(result.matches);
   });
 
   window.ipc.onSetKeyHelpVisible((data) => {
@@ -168,6 +199,34 @@ export function Toolbar() {
     window.ipc.toggleUrlBar();
   };
 
+  const debouncedFindInPage = debounce((text: string) => {
+    window.ipc.findInPage(text);
+  }, 200);
+
+  const handleFindInput = (e: InputEvent) => {
+    const text = (e.target as HTMLInputElement).value;
+    setFindText(text);
+    if (text) {
+      debouncedFindInPage(text);
+    } else {
+      debouncedFindInPage.cancel();
+      setActiveMatch(0);
+      setTotalMatches(0);
+      window.ipc.stopFindInPage();
+    }
+  };
+
+  const handleFindKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (findText()) {
+        window.ipc.findInPage(findText(), { findNext: true, forward: !e.shiftKey });
+      }
+    } else if (e.key === 'Escape') {
+      setFindVisible(false);
+      window.ipc.stopFindInPage();
+    }
+  };
+
   onMount(() => {
     try {
       const stored = localStorage.getItem('awrit:history');
@@ -175,9 +234,13 @@ export function Toolbar() {
     } catch (_e) {}
 
     const handleGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && (omniboxVisible() || keyHelp().visible)) {
+      if (e.key === 'Escape' && (omniboxVisible() || keyHelp().visible || findVisible())) {
         if (omniboxVisible()) window.ipc.toggleUrlBar();
         if (keyHelp().visible) window.ipc.toggleKeyHelp();
+        if (findVisible()) {
+          setFindVisible(false);
+          window.ipc.stopFindInPage();
+        }
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
@@ -192,6 +255,56 @@ export function Toolbar() {
           class="fixed top-0 left-0 h-[2px] bg-blue-500 z-50 transition-all duration-300 ease-out"
           style={{ width: `${loadingProgress()}%` }}
         />
+      </Show>
+
+      {/* Find in Page Bar */}
+      <Show when={findVisible()}>
+        <div 
+          class="fixed top-4 right-4 z-50 animate-in slide-in-from-top-4 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div class="bg-[#1C1B22] border border-white/10 rounded-xl shadow-2xl flex items-center p-2 gap-2 font-sans min-w-[300px]">
+            <div class="flex-1 relative flex items-center">
+              <input
+                ref={findInputRef}
+                type="text"
+                value={findText()}
+                onInput={handleFindInput}
+                onKeyDown={handleFindKeyDown}
+                placeholder="Find in page..."
+                class="w-full bg-white/5 border border-white/5 focus:border-blue-500/50 outline-none rounded-lg px-3 py-1.5 text-white placeholder-white/20 transition-all text-[14px]"
+              />
+              <Show when={totalMatches() > 0}>
+                <span class="absolute right-3 text-[12px] text-white/30 font-mono pointer-events-none">
+                  {activeMatch()} / {totalMatches()}
+                </span>
+              </Show>
+            </div>
+            <div class="flex items-center gap-1 pr-1">
+              <button 
+                onClick={() => window.ipc.findInPage(findText(), { findNext: true, forward: false })}
+                class="p-1.5 hover:bg-white/5 rounded-lg text-white/50 hover:text-white/90 transition-colors"
+                title="Previous (Shift+Enter)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+              </button>
+              <button 
+                onClick={() => window.ipc.findInPage(findText(), { findNext: true, forward: true })}
+                class="p-1.5 hover:bg-white/5 rounded-lg text-white/50 hover:text-white/90 transition-colors"
+                title="Next (Enter)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <div class="w-px h-4 bg-white/10 mx-1" />
+              <button 
+                onClick={() => window.ipc.toggleFind()}
+                class="p-1.5 hover:bg-white/5 rounded-lg text-white/50 hover:text-white/90 transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </Show>
 
       <Show when={omniboxVisible()}>

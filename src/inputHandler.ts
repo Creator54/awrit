@@ -46,12 +46,15 @@ export function handleInput(evt: TermEvent): boolean {
         return true;
       }
 
-      const isToolbarActive = view.omniboxVisible || view.keyHelpVisible;
+      const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
       const targetWindow = isToolbarActive ? view.toolbar : view.content;
       const webContents = targetWindow.webContents;
       
-      // FORCED FOCUS: Ensure the renderer is active before every event
-      webContents.focus();
+      // OPTIMIZED FOCUS: Only focus if not already focused
+      if (view.focusedContent !== webContents) {
+        webContents.focus();
+        view.focusedContent = webContents;
+      }
       
       const { code, modifiers, down, isCharEvent } = evt.keyEvent;
       const electronMods = normalizeModifiers(modifiers);
@@ -93,7 +96,7 @@ export function handleInput(evt: TermEvent): boolean {
 
     case 'paste': {
       if (evt.paste) {
-        const isToolbarActive = view.omniboxVisible || view.keyHelpVisible;
+        const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
         const webContents = isToolbarActive ? view.toolbar.webContents : view.content.webContents;
         webContents.insertText(evt.paste);
       }
@@ -124,15 +127,17 @@ export function handleInput(evt: TermEvent): boolean {
       const { toolbarNode, contentNode, layoutContainer } = view;
       const dpr = layoutContainer.devicePixelRatio;
 
-      const isOverlayActive = view.omniboxVisible || view.keyHelpVisible;
+      const isOverlayActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
       const isInToolbar = isOverlayActive;
 
       const targetWindow = isInToolbar ? view.toolbar : view.content;
       const targetContents = targetWindow.webContents;
 
-      // FORCED FOCUS: Ensure the renderer is active before every event
-      targetContents.focus();
-      view.focusedContent = targetContents;
+      // OPTIMIZED FOCUS: Only focus if not already focused
+      if (view.focusedContent !== targetContents) {
+        targetContents.focus();
+        view.focusedContent = targetContents;
+      }
 
       const targetNode = isInToolbar ? toolbarNode : contentNode;
       const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);

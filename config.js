@@ -170,10 +170,7 @@ function refresh({ view }) {
 }
 
 function find({ view }) {
-  view.toolbar.webContents.send('toolbar:toggle-find');
-  view.content.blurWebView();
-  view.toolbar.focusOnWebView();
-  view.focusedContent = view.toolbar.webContents;
+  view.toggleFind();
 }
 
 const { exec } = require('child_process');
