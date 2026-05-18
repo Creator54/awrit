@@ -102,12 +102,6 @@ function parseKeyBinding(binding: string): string[] {
         if (modifiers.length > 0) {
           let combo = [...new Set(modifiers)].sort().concat(lastPart).join('+');
           
-          // Normalize common terminal aliases to canonical forms
-          if (combo === 'ctrl+[') combo = 'escape';
-          if (combo === 'ctrl+m') combo = 'return';
-          if (combo === 'ctrl+i') combo = 'tab';
-          if (combo === 'ctrl+h') combo = 'backspace';
-          
           parts.push(combo);
           modifiers = [];
         } else {
@@ -233,36 +227,6 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
     .map(m => m.toLowerCase())
     .filter(m => ['ctrl', 'alt', 'shift', 'meta'].includes(m));
 
-  // Terminal Aliases: Normalize common control character aliases
-  if (matchedModifiers.includes('ctrl') && matchedModifiers.length === 1) {
-    let aliased = false;
-    switch (normalizedCode) {
-      case '[':
-      case 'escape':
-        normalizedCode = 'escape';
-        aliased = true;
-        break;
-      case 'm':
-      case 'return':
-        normalizedCode = 'return';
-        aliased = true;
-        break;
-      case 'i':
-      case 'tab':
-        normalizedCode = 'tab';
-        aliased = true;
-        break;
-      case 'h':
-      case 'backspace':
-        normalizedCode = 'backspace';
-        aliased = true;
-        break;
-    }
-    if (aliased) {
-      matchedModifiers = [];
-    }
-  }
-  
   matchedModifiers = [...new Set(matchedModifiers)];
   
   const isAlpha = /^[a-zA-Z]$/.test(code);

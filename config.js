@@ -144,6 +144,8 @@ const keybindings = {
     '<C-d>': quit,
     '<C-]>': forward,
     '<C-[>': back,
+    '<A-left>': back,
+    '<A-right>': forward,
     '<C-f>': find,
     '<C-r>': refresh,
   },
