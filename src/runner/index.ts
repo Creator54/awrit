@@ -2,6 +2,7 @@ import { possibleOptions, options } from '../args';
 import { $, type Subprocess } from 'bun';
 import electronPath from 'electron';
 import { resolve, join } from 'node:path';
+import fs from 'node:fs';
 import { colorsToTailwind, queryColors } from './kittyColors';
 import { server } from './devServer';
 import { getDisplayScale } from '../dpi';
@@ -122,13 +123,21 @@ if (forcedDisplayScale) {
 }
 args.push(...process.argv.slice(2));
 
+const logPath = join(root, 'awrit.log');
+try {
+  if (fs.existsSync(logPath)) {
+    fs.unlinkSync(logPath);
+  }
+} catch {}
+const logFd = fs.openSync(logPath, 'a');
+
 children.push([
   'electron',
   Bun.spawn(
     // electronPath is not the electron module, it's the path to the electron executable, despite what TS thinks
     args,
     {
-      stdio: ['inherit', 'inherit', 'inherit'],
+      stdio: ['inherit', 'inherit', logFd],
       serialization: 'json',
       ipc(message, subprocess) {
         // TODO: do cool stuff with IPC between bun and the electron process

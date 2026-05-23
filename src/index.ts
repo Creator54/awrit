@@ -3,17 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { options } from './args';
 
-// Only redirect console logs, NOT process.stdout/stderr (which are needed for graphics)
-if (!options.dev) {
-  const logFile = path.join(process.cwd(), 'awrit_startup.log');
-  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
-  console.log = (...args) => logStream.write(args.join(' ') + '\n');
-  console.error = (...args) => logStream.write(args.join(' ') + '\n');
-}
+import { console_, setupLogging } from './console';
+setupLogging();
 
-out.setup();
+process.on('uncaughtException', (err) => {
+  console_.error('UNCAUGHT EXCEPTION:', err);
+});
 
-import { app, dialog, ipcMain, nativeTheme, Menu } from 'electron';
+process.on('unhandledRejection', (reason) => {
+  console_.error('UNHANDLED REJECTION:', reason);
+});
+
+import { app, dialog, ipcMain, nativeTheme, Menu, shell } from 'electron';
 
 import {
   termEnableFeatures,
@@ -24,24 +25,14 @@ import {
 import { handleDeepLinkAuth } from './auth';
 import { sessionPromise } from './session';
 
-process.on('uncaughtException', (err) => {
-  const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
-  logStream.write(`UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}\n`);
-});
-
-process.on('unhandledRejection', (reason, _promise) => {
-  const logStream = fs.createWriteStream(path.join(process.cwd(), 'awrit_startup.log'), { flags: 'a' });
-  logStream.write(`UNHANDLED REJECTION: ${reason}\n`);
-});
-
 import { handleInput } from './inputHandler';
 import { createWindowWithToolbar, getWindowSize, type WindowView } from './windows';
-import { console_ } from './console';
 import { features } from './features';
 import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
 import { loadSessionConfig } from './session';
 import { registerProviders } from './authConfig';
+
 let homepage = 'https://github.com/chase/awrit';
 let urlBarDefaultVisible = false;
 
