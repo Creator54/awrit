@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getLogPath } from './paths';
 
-const LOG_FILE = path.join(process.cwd(), 'awrit.log');
+const LOG_FILE = getLogPath();
 
 let logStream: fs.WriteStream | null = null;
 

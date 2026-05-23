@@ -123,6 +123,12 @@
         cat > $out/bin/awrit <<EOF
         #!/usr/bin/env bash
         export LD_LIBRARY_PATH="${libPath}\''${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+        
+        # Ensure log directory exists
+        LOG_DIR="''${XDG_DATA_HOME:-\$HOME/.local/share}/awrit"
+        mkdir -p "\$LOG_DIR"
+        LOG_FILE="\$LOG_DIR/awrit.log"
+
         for arg in "\$@"; do
           case "\$arg" in
             -h|--help)
@@ -136,7 +142,8 @@
             -v|--version) echo "awrit 2.0.3"; exit 0;;
           esac
         done
-        exec "$ELECTRON" $out/lib/awrit/dist/index.js --high-dpi-support=1 "\$@"
+        # Redirect stderr to log file to prevent TUI corruption from native logs (Electron, GTK, etc.)
+        exec "$ELECTRON" $out/lib/awrit/dist/index.js --high-dpi-support=1 "\$@" 2> "\$LOG_FILE"
         EOF
         chmod +x $out/bin/awrit
       '';

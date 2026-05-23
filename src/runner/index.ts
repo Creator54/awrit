@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { colorsToTailwind, queryColors } from './kittyColors';
 import { server } from './devServer';
 import { getDisplayScale } from '../dpi';
+import { getLogPath } from '../paths';
 
 const { stdout } = process;
 
@@ -123,7 +124,7 @@ if (forcedDisplayScale) {
 }
 args.push(...process.argv.slice(2));
 
-const logPath = join(root, 'awrit.log');
+const logPath = getLogPath();
 try {
   if (fs.existsSync(logPath)) {
     fs.unlinkSync(logPath);
