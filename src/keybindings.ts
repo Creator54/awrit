@@ -5,7 +5,7 @@ import type { WindowView } from './windows';
 
 const isMac = process.platform === 'darwin';
 
-export type KeyBindingAction = ((event: { isMac: boolean; view?: WindowView }) => void) & {
+export type KeyBindingAction = ((event: { isMac: boolean; view?: WindowView }) => boolean | undefined) & {
   displayName?: string;
 };
 
@@ -205,7 +205,7 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   let keyEvent: KeyEvent | undefined;
   if (event.eventType === 'key') {
     keyEvent = event.keyEvent;
-  } else if (event.eventType === 'mouse') {
+  } else if (event.eventType === 'mouse' && event.mouseEvent) {
     const { kind, button } = event.mouseEvent;
     if (kind === 'mouseDown' || kind === 'mouseUp') {
       if (button === 'fourth' || button === 'fifth') {
@@ -233,11 +233,13 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   const isUppercase = isAlpha && code === code.toUpperCase();
   const isSymbol = code.length === 1 && !isAlpha && !/^[0-9]$/.test(code);
 
-  if ((isUppercase || isSymbol) && matchedModifiers.includes('shift')) {
-    matchedModifiers = matchedModifiers.filter(m => m !== 'shift');
-    if (isUppercase) {
+  if (isUppercase) {
+    if (!matchedModifiers.includes('shift')) {
       matchedModifiers.push('shift');
     }
+  } else if (isSymbol && matchedModifiers.includes('shift')) {
+    // For symbols, we only keep shift if it was explicitly sent, 
+    // to match how parseKeyBinding handles them.
   }
   
   const sortedModifiers = matchedModifiers.sort();
@@ -301,7 +303,19 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
     }
 
     if (exactMatch) {
-      exactMatch.action({ isMac, view });
+      const handled = exactMatch.action({ isMac, view });
+      if (options.dev) {
+        console_.error('[KeyAction]', {
+          original: exactMatch.original,
+          handled,
+          inputFocused: view?.inputFocused
+        });
+      }
+      if (handled === false) {
+        currentSequence = [];
+        pendingAction = null;
+        return false;
+      }
       currentSequence = [];
       pendingAction = null;
       return true;
@@ -311,6 +325,18 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   };
 
   const result = checkMatch(currentSequence);
+  
+  if (result === 'prefix') {
+    // When no input is focused and no overlay is active, swallow prefix keys
+    // so multi-key sequences like 'gg' don't leak keystrokes to the page.
+    const isIdle = !view?.inputFocused;
+    const isOverlayActive = view?.omniboxVisible || view?.findVisible || view?.keyHelpVisible;
+    
+    if (isIdle && !isOverlayActive) {
+      return true; 
+    }
+    return false;
+  }
   
   if (result === false && currentSequence.length > 1) {
     // Mismatch in sequence, try starting a new sequence with the last key

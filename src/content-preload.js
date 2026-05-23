@@ -17,18 +17,9 @@ try {
   contextBridge.exposeInMainWorld('awrit', {
     isAwrit: true,
     version: '2.0.3',
-    /**
-     * Request the browser to open a URL in the user's default system browser.
-     * Use this for secure authentication flows.
-     */
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
-    /**
-     * Inform the browser that an external authentication has completed.
-     * Usually, deep-linking (awrit://auth) is preferred, but this can be
-     * used for lighter session updates.
-     */
     notifyAuthComplete: (data) => {
       ipcRenderer.send('awrit:auth-complete', data);
     }
@@ -41,6 +32,27 @@ try {
   // If contextBridge fails (e.g. isolation disabled), we do nothing.
   // We want to remain secure and not fallback to dangerous patterns.
 }
+
+// Input focus detection — must run regardless of contextBridge success
+// so vim keybinds are disabled when typing in input fields.
+let lastFocused = false;
+const updateFocus = () => {
+  const activeEl = document.activeElement;
+  const isInput = !!(activeEl && (
+    ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName) || 
+    activeEl.isContentEditable ||
+    activeEl.getAttribute('role') === 'textbox'
+  ));
+  if (isInput !== lastFocused) {
+    lastFocused = isInput;
+    ipcRenderer.send('awrit:input-focus', isInput);
+  }
+};
+
+window.addEventListener('focusin', updateFocus);
+window.addEventListener('focusout', updateFocus);
+window.addEventListener('load', updateFocus);
+setInterval(updateFocus, 1000);
 
 // Force dark mode CSS (standard UX improvement, not "faking" identity)
 if (document.documentElement) {

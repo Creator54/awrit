@@ -31,24 +31,18 @@ const debugPort = 9222;
  **/
 const auth = {
   /**
-   * List of authentication providers.
+   * List of secure authentication providers.
    * When you visit a domain in the 'domains' list, awrit will open your
-   * system browser to complete the login securely via OAuth PKCE.
-   * 
-   * Example:
-   * providers: [
-   *   {
-   *     name: 'google',
-   *     domains: ['accounts.google.com'],
-   *     clientId: 'YOUR_CLIENT_ID',
-   *     redirectPort: 9223,
-   *   },
-   * ],
-   * 
-   * Note: Google login pages render natively in awrit without interception.
-   * Only add providers that require external browser OAuth flows.
+   * system browser to complete the login securely.
    **/
-  providers: [],
+  providers: [
+    {
+      name: 'google',
+      domains: ['accounts.google.com'],
+      clientId: '1003228370782-652d92q21gcknh408dpb3fhfl927jnld.apps.googleusercontent.com', // Add your Google Client ID here to enable secure login
+      redirectPort: 9223,
+    },
+  ],
 };
 
 /** Kitty Integration
@@ -122,6 +116,99 @@ const kitty = {
  *   linux?: Record<string, KeyBindingAction>
  * }}
  */
+/**
+ * Helper to check if we should handle Vim navigation.
+ * Active when no input is focused and no overlay is visible.
+ */
+function isVimNavigating({ view }) {
+  const noInput = !view?.inputFocused;
+  const noOverlay = !(view?.omniboxVisible || view?.findVisible || view?.keyHelpVisible);
+  const shouldNavigate = noInput && noOverlay;
+
+  if (process.env.AWRIT_DEBUG_VIM) {
+    console.error('[VimNavDebug]', {
+      inputFocused: view?.inputFocused,
+      omnibox: view?.omniboxVisible,
+      find: view?.findVisible,
+      help: view?.keyHelpVisible,
+      shouldNavigate
+    });
+  }
+
+  return shouldNavigate;
+}
+
+/** @type {KeyBindingAction} */
+function scrollDown({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ top: 100, behavior: "auto" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollUp({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ top: -100, behavior: "auto" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollLeft({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ left: -100, behavior: "auto" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollRight({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ left: 100, behavior: "auto" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollToTop({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollTo(0, 0)');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollToBottom({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  // Use a very large number to ensure we hit the bottom regardless of height calculation quirks
+  view.content.webContents.executeJavaScript('window.scrollTo(0, 10000000)');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollHalfPageDown({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ top: window.innerHeight / 2, behavior: "smooth" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function scrollHalfPageUp({ view }) {
+  if (!isVimNavigating({ view })) return false;
+  view.content.webContents.executeJavaScript('window.scrollBy({ top: -window.innerHeight / 2, behavior: "smooth" })');
+  return true;
+}
+
+/** @type {KeyBindingAction} */
+function blurInput({ view }) {
+  if (!view) return false;
+  // If an overlay is visible, let ESC close it via normal handler
+  if (view.omniboxVisible || view.findVisible || view.keyHelpVisible) return false;
+  // Blur focused element so vim keys resume
+  view.content.webContents.executeJavaScript(`
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement) {
+      document.activeElement.blur();
+    }
+  `);
+  return true;
+}
+
 const keybindings = {
   mac: {
     '<M-c>': copy,
@@ -140,6 +227,25 @@ const keybindings = {
     '<M-f>': find,
     '<M-r>': refresh,
     '<M-S-d>': toggleDarkMode,
+
+    // Vim Navigation
+    'j': scrollDown,
+    'k': scrollUp,
+    'h': scrollLeft,
+    'l': scrollRight,
+    'd': scrollHalfPageDown,
+    'u': scrollHalfPageUp,
+    'gg': scrollToTop,
+    'G': scrollToBottom,
+    'H': (args) => isVimNavigating(args) ? back(args) || true : false,
+    'L': (args) => isVimNavigating(args) ? forward(args) || true : false,
+    'r': (args) => isVimNavigating(args) ? refresh(args) || true : false,
+    '<Esc>': blurInput,
+    '<C-[>': blurInput,
+    '/': (args) => isVimNavigating(args) ? find(args) || true : false,
+    'n': (args) => isVimNavigating(args) ? (args.view?.findNext() || true) : false,
+    'N': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
+    'p': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
   },
   linux: {
     '<C-c>': copy,
@@ -156,6 +262,25 @@ const keybindings = {
     '<C-f>': find,
     '<C-r>': refresh,
     '<A-d>': toggleDarkMode,
+
+    // Vim Navigation
+    'j': scrollDown,
+    'k': scrollUp,
+    'h': scrollLeft,
+    'l': scrollRight,
+    'd': scrollHalfPageDown,
+    'u': scrollHalfPageUp,
+    'gg': scrollToTop,
+    'G': scrollToBottom,
+    'H': (args) => isVimNavigating(args) ? back(args) || true : false,
+    'L': (args) => isVimNavigating(args) ? forward(args) || true : false,
+    'r': (args) => isVimNavigating(args) ? refresh(args) || true : false,
+    '<Esc>': blurInput,
+    '<C-[>': blurInput,
+    '/': (args) => isVimNavigating(args) ? find(args) || true : false,
+    'n': (args) => isVimNavigating(args) ? (args.view?.findNext() || true) : false,
+    'N': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
+    'p': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
   },
 
   '<Mouse4>': back,
@@ -178,6 +303,7 @@ function refresh({ view }) {
 }
 
 function find({ view }) {
+  if (process.env.AWRIT_DEBUG_VIM) console.error('[VimAction] Triggering find-in-page');
   view.toggleFind();
 }
 

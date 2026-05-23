@@ -172,9 +172,9 @@ function inputHandler(evt: TermEvent) {
     !handled &&
     quitOnCtrlC && 
     evt.eventType === 'key' && 
-    evt.keyEvent.code === 'c' && 
-    evt.keyEvent.modifiers.includes('ctrl') && 
-    evt.keyEvent.down
+    evt.keyEvent?.code === 'c' && 
+    evt.keyEvent?.modifiers.includes('ctrl') && 
+    evt.keyEvent?.down
   ) {
     cleanup(0, 'Received Ctrl+C, quitting...');
   }
@@ -288,15 +288,4 @@ app.whenReady().then(async () => {
   if (startUrl) {
     app.emit('open-url', new Event('open-url'), startUrl);
   }
-
-  ipcMain.handle('findInPage', (_, text: string, opts) => {
-    window.content.webContents.findInPage(text, opts);
-  });
-
-  ipcMain.handle('stopFindInPage', () => {
-    window.content.webContents.stopFindInPage('clearSelection');
-    window.toolbar.blurWebView();
-    window.content.focusOnWebView();
-    window.focusedContent = window.content.webContents;
-  });
 });

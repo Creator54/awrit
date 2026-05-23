@@ -15,6 +15,8 @@ export interface BrowserToolbar {
   stopFindInPage: () => void;
   onToggleFind: (callback: () => void) => void;
   onFindResult: (callback: (result: { activeMatchOrdinal: number; matches: number }) => void) => void;
+  onFindNext: (callback: () => void) => void;
+  onFindPrev: (callback: () => void) => void;
   onUrlChanged: (callback: (url: string) => void) => void;
   onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
   onLoadingStarted: (callback: () => void) => void;
@@ -23,6 +25,7 @@ export interface BrowserToolbar {
   onToggleUrlBar: (callback: () => void) => void;
   onSetUrlBarVisible: (callback: (visible: boolean) => void) => void;
   onDesignModeChanged: (callback: (active: boolean) => void) => void;
+  onInputFocusChanged: (callback: (focused: boolean) => void) => void;
   onSetKeyHelpVisible: (callback: (data: { visible: boolean; bindings?: Array<{ action: string; keys: string[] }> }) => void) => void;
   toggleUrlBar: () => void;
   toggleKeyHelp: () => void;
@@ -51,8 +54,10 @@ export function Toolbar() {
   const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [url, setUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
+  const [inputFocused, setInputFocused] = createSignal(false);
   const [findVisible, setFindVisible] = createSignal(false);
   const [findText, setFindText] = createSignal('');
+  const [lastSearch, setLastSearch] = createSignal('');
   const [activeMatch, setActiveMatch] = createSignal(0);
   const [totalMatches, setTotalMatches] = createSignal(0);
   const [keyHelp, setKeyHelp] = createSignal<{ visible: boolean; bindings: Array<{ action: string; keys: string[] }> }>({ 
@@ -116,13 +121,16 @@ export function Toolbar() {
     } else {
       setActiveMatch(0);
       setTotalMatches(0);
-      window.ipc.stopFindInPage();
     }
   });
 
   window.ipc.onFindResult((result) => {
     setActiveMatch(result.activeMatchOrdinal);
     setTotalMatches(result.matches);
+  });
+
+  window.ipc.onInputFocusChanged((focused) => {
+    setInputFocused(focused);
   });
 
   window.ipc.onSetKeyHelpVisible((data) => {
@@ -145,14 +153,10 @@ export function Toolbar() {
     const trimmed = input.trim();
     if (!trimmed) return { url: '', title: '', isSearch: false };
 
-    // 1. Already has a protocol?
     if (/^[a-z]+:\/\//i.test(trimmed)) {
       return { url: trimmed, title: `Go to ${trimmed}`, isSearch: false };
     }
 
-    // 2. Heuristics for a URL without protocol:
-    // - No spaces
-    // - Contains a dot (e.g. example.com) OR is 'localhost'
     const hasDot = trimmed.includes('.');
     const isLocalhost = trimmed.split(/[:\/]/)[0] === 'localhost';
     const hasSpace = trimmed.includes(' ');
@@ -163,7 +167,6 @@ export function Toolbar() {
       return { url, title: `Go to ${url}`, isSearch: false };
     }
 
-    // 3. Fallback to search
     return {
       url: `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`,
       title: `Search Google for "${trimmed}"`,
@@ -225,18 +228,10 @@ export function Toolbar() {
     window.ipc.toggleUrlBar();
   };
 
-  const _handleRefresh = () => {
-    window.ipc.refresh();
-    window.ipc.toggleUrlBar();
-  };
-
-  let lastSearchedText = '';
-
   const performSearch = (text: string, options?: any) => {
-    if (text === lastSearchedText && !options?.findNext) return;
-    
+    if (!text) return;
+    setLastSearch(text);
     window.ipc.findInPage(text, options);
-    lastSearchedText = text;
   };
 
   const debouncedFindInPage = debounce((text: string) => {
@@ -250,7 +245,6 @@ export function Toolbar() {
       debouncedFindInPage(text);
     } else {
       debouncedFindInPage.cancel();
-      lastSearchedText = '';
       setActiveMatch(0);
       setTotalMatches(0);
       window.ipc.stopFindInPage();
@@ -260,7 +254,13 @@ export function Toolbar() {
   const handleFindKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       debouncedFindInPage.cancel();
-      performSearch(findText(), { findNext: true, forward: !e.shiftKey });
+      if (findText()) {
+        performSearch(findText(), { findNext: true, forward: !e.shiftKey });
+      }
+      window.ipc.toggleFind();
+    } else if (e.key === 'Escape') {
+      window.ipc.toggleFind();
+      window.ipc.stopFindInPage();
     }
   };
 
@@ -269,6 +269,13 @@ export function Toolbar() {
       const stored = localStorage.getItem('awrit:history');
       if (stored) setHistory(JSON.parse(stored));
     } catch (_e) {}
+
+    window.ipc.onFindNext(() => {
+      performSearch(lastSearch(), { findNext: true, forward: true });
+    });
+    window.ipc.onFindPrev(() => {
+      performSearch(lastSearch(), { findNext: true, forward: false });
+    });
 
     const handleGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -280,6 +287,7 @@ export function Toolbar() {
           e.stopPropagation();
         } else if (findVisible()) {
           window.ipc.toggleFind();
+          window.ipc.stopFindInPage();
           e.stopPropagation();
         }
       }
@@ -414,7 +422,7 @@ export function Toolbar() {
       {/* Keybindings Help Overlay */}
       <Show when={keyHelp().visible}>
         <div 
-          class="h-screen w-screen flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          class="h-screen w-screen flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-auto"
           onClick={() => window.ipc.toggleKeyHelp()}
         >
           <div 

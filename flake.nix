@@ -90,7 +90,7 @@
         chmod -R +w node_modules
         patchShebangs node_modules
 
-        bun build src/index.ts src/preload.js \
+        bun build src/index.ts src/preload.js src/content-preload.js \
           --outdir dist --root src \
           --target node --format cjs \
           --external electron --external '../config.js' --external '*.node'

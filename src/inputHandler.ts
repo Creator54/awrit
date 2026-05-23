@@ -56,7 +56,9 @@ export function handleInput(evt: TermEvent): boolean {
         view.focusedContent = webContents;
       }
       
-      const { code, modifiers, down, isCharEvent } = evt.keyEvent;
+      const keyEvent = evt.keyEvent;
+      if (!keyEvent) return false;
+      const { code, modifiers, down, isCharEvent } = keyEvent;
       const electronMods = normalizeModifiers(modifiers);
 
       if (down) {
@@ -110,7 +112,9 @@ export function handleInput(evt: TermEvent): boolean {
       return true;
 
     case 'mouse': {
-      const { kind, button, x, y, modifiers } = evt.mouseEvent;
+      const mouseEvent = evt.mouseEvent;
+      if (!mouseEvent) return false;
+      const { kind, button, x, y, modifiers } = mouseEvent;
       const electronMods = normalizeModifiers(modifiers);
       
       if (
