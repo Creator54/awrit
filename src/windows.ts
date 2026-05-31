@@ -110,6 +110,32 @@ function padSize(size: WindowDimensions): WindowDimensions {
   };
 }
 
+function generateAuthPlaceholder(providerName: string, errorMessage?: string): string {
+  const displayName = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+  
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  
+  if (errorMessage) {
+    return `
+    <div style="background:#1C1B22;color:white;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px">
+      <div style="font-size:48px;margin-bottom:16px">\u26a0\ufe0f</div>
+      <h1 style="margin-bottom:8px">Login Failed</h1>
+      <p style="color:#f87171;margin-bottom:8px;max-width:500px">${esc(errorMessage)}</p>
+      <button onclick="window.location.reload()" style="background:#3b82f6;color:white;border:none;padding:12px 24px;border-radius:6px;cursor:pointer;font-size:16px;margin-top:16px">Retry</button>
+      <p style="color:#9ca3af;margin-top:24px;font-size:13px">Check ~/.local/share/awrit/awrit.log for details</p>
+    </div>`;
+  }
+  
+  return `
+  <div style="background:#1C1B22;color:white;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif">
+    <h1 style="margin-bottom:10px">Login with ${displayName}</h1>
+    <p style="color:#ccc;margin-bottom:20px">Please complete the login in your system browser...</p>
+    <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:white;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:30px"></div>
+    <button onclick="window.history.back()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-size:14px">Cancel</button>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  </div>`;
+}
+
 export const managedViews: WindowView[] = [];
 
 /**
@@ -208,6 +234,7 @@ export async function createWindowWithToolbar(
   const refreshers: Array<() => void> = [];
 
   let suppressionTimeout: NodeJS.Timeout | null = null;
+  let suppressionDeadline = 0;
 
   const startSuppression = () => {
     // @ts-expect-error
@@ -220,24 +247,31 @@ export async function createWindowWithToolbar(
       content.setBackgroundColor('#000000');
     }
 
-    // Safety timeout: never suppress for more than 5 seconds
-    if (suppressionTimeout) clearTimeout(suppressionTimeout);
-    suppressionTimeout = setTimeout(() => {
-       // @ts-expect-error
-       content.isSuppressingPaint = false;
-       content.webContents.invalidate();
-       suppressionTimeout = null;
-    }, 5000);
+    // Safety timeout: never suppress for more than 5 seconds (monotonic — re-entry does not reset)
+    if (suppressionDeadline <= Date.now()) {
+      if (suppressionTimeout) clearTimeout(suppressionTimeout);
+      suppressionDeadline = Date.now() + 5000;
+      suppressionTimeout = setTimeout(() => {
+         // @ts-expect-error
+         content.isSuppressingPaint = false;
+         content.webContents.invalidate();
+         suppressionTimeout = null;
+         suppressionDeadline = 0;
+      }, 5000);
+    }
   };
 
   const stopSuppression = (delay = 300, force = false) => {
     if (suppressionTimeout) clearTimeout(suppressionTimeout);
+    // Reset the monotonic deadline so a fresh startSuppression() always re-arms a real 5s cap
+    suppressionDeadline = 0;
     
     const execute = () => {
       // @ts-expect-error
       content.isSuppressingPaint = false;
       content.webContents.invalidate();
       suppressionTimeout = null;
+      suppressionDeadline = 0;
     };
 
     if (force) {
@@ -378,30 +412,17 @@ export async function createWindowWithToolbar(
     if (isMainFrame && !isInPlace) {
       const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
       console_.log(`[Navigation] Main frame hard navigation to: ${displayUrl}, ensuring display freeze...`);
-      startSuppression();
+      if (!(content as any).isSuppressingPaint) startSuppression();
 
       const provider = getProviderForUrl(url);
       if (provider) {
         console_.log(`[Auth Bridge] Intercepted navigation for provider [${provider.name}], triggering system browser...`);
         
-        // Prevent the navigation in Electron
         event.preventDefault();
-        // Clear suppression since we're not actually navigating
         stopSuppression(0);
         
-        // Show a helpful message in awrit
         content.webContents.executeJavaScript(`
-          document.body.innerHTML = \`
-            <div style="background: #1C1B22; color: white; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
-              <h1 style="margin-bottom: 10px;">Login with ${provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}</h1>
-              <p style="color: #ccc; margin-bottom: 20px;">Please complete the login in your system browser...</p>
-              <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 30px;"></div>
-              <button onclick="window.history.back()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button>
-              <style>
-                @keyframes spin { to { transform: rotate(360deg); } }
-              </style>
-            </div>
-          \`;
+          document.body.innerHTML = \`${generateAuthPlaceholder(provider.name)}\`;
         `).catch(() => {});
 
         const manager = new OAuthManager(provider);
@@ -412,7 +433,11 @@ export async function createWindowWithToolbar(
           }
           content.webContents.reload();
         }).catch(err => {
+          const message = err?.message || String(err);
           console_.error(`[Auth Bridge] Failed:`, err);
+          content.webContents.executeJavaScript(`
+            document.body.innerHTML = \`${generateAuthPlaceholder(provider.name, message)}\`;
+          `).catch(() => {});
         });
       }
     }
@@ -591,6 +616,7 @@ export async function createWindowWithToolbar(
       ipcCleanup();
       ipcMain.removeListener('awrit:open-external', onOpenExternal);
       ipcMain.removeListener('awrit:request-secure-login', onRequestSecureLogin);
+      ipcMain.removeListener('awrit:auth-complete', onAuthComplete);
       destructors.forEach(d => { d(); });
       destructors.length = 0;
       refreshers.length = 0;
@@ -676,16 +702,27 @@ export async function createWindowWithToolbar(
     const manager = new OAuthManager(config);
     manager.authenticate().then(async tokens => {
       console_.log(`[Auth Bridge] Login successful for ${config.name}`);
-      if (config.name === 'google') {
-        const { establishGoogleSession } = require('./auth');
-        await establishGoogleSession(content.webContents.session, tokens.access_token);
+      if (config.establishSession) {
+        await config.establishSession(content.webContents.session, tokens.access_token);
       }
       content.webContents.reload();
-    }).catch(err => console_.error(`[Auth Bridge] Login failed:`, err));
+    }).catch(err => {
+      const message = err?.message || String(err);
+      console_.error(`[Auth Bridge] Login failed:`, err);
+      content.webContents.executeJavaScript(`
+        document.body.innerHTML = \`${generateAuthPlaceholder(config.name, message)}\`;
+      `).catch(() => {});
+    });
+  };
+
+  const onAuthComplete = (_event: any, data: any) => {
+    console_.log('[Auth Bridge] Website reported auth complete:', data);
+    content.webContents.reload();
   };
 
   ipcMain.on('awrit:open-external', onOpenExternal);
   ipcMain.on('awrit:request-secure-login', onRequestSecureLogin);
+  ipcMain.on('awrit:auth-complete', onAuthComplete);
 
   toolbar.webContents.on('did-finish-load', () => {
     // Send the correct initial state to the toolbar to prevent desync

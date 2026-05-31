@@ -9,4 +9,20 @@
 #:   map ctrl+shift+b launch --location=split --cwd=current ./awrit
 
 cd "$(dirname "$0")"
+
+# Restore terminal on ANY exit (crash, SIGKILL, etc.)
+# Prevents raw keyboard mode from sticking and breaking all input
+cleanup() {
+  printf '\e[>4u'  2>/dev/null  # Pop keyboard enhancement flags
+  printf '\e[?1000l' 2>/dev/null  # Disable mouse tracking
+  printf '\e[?1002l' 2>/dev/null
+  printf '\e[?1003l' 2>/dev/null
+  printf '\e[?1004l' 2>/dev/null  # Disable focus tracking
+  printf '\e[?2004l' 2>/dev/null  # Disable bracketed paste
+  printf '\e[?25h' 2>/dev/null    # Show cursor
+  printf '\e[?7h' 2>/dev/null     # Enable auto-wrap
+  stty sane 2>/dev/null           # Restore cooked mode
+}
+trap cleanup EXIT
+
 exec bun run ./src/runner "$@"

@@ -27,7 +27,7 @@ export const sessionPromise = new Promise<Session>((resolve) => {
       const partitionName = `persist:awrit-profile-${pathHash}`;
       session = ElectronSession.fromPartition(partitionName);
     } else {
-      session = ElectronSession.fromPartition('persist:custom-awrit');
+      session = ElectronSession.fromPartition('persist:awrit');
     }
 
     // Clean up the User Agent to be honest but professional

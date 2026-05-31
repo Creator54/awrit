@@ -31,18 +31,24 @@ const debugPort = 9222;
  **/
 const auth = {
   /**
-   * List of secure authentication providers.
+   * List of authentication providers.
    * When you visit a domain in the 'domains' list, awrit will open your
-   * system browser to complete the login securely.
+   * system browser to complete the login securely via OAuth PKCE.
+   * 
+   * Example:
+   * providers: [
+   *   {
+   *     name: 'google',
+   *     domains: ['accounts.google.com'],
+   *     clientId: 'YOUR_CLIENT_ID',
+   *     redirectPort: 9223,
+   *   },
+   * ],
+   * 
+   * Note: Google login pages render natively in awrit without interception.
+   * Only add providers that require external browser OAuth flows.
    **/
-  providers: [
-    {
-      name: 'google',
-      domains: ['accounts.google.com'],
-      clientId: '1003228370782-652d92q21gcknh408dpb3fhfl927jnld.apps.googleusercontent.com', // Add your Google Client ID here to enable secure login
-      redirectPort: 9223,
-    },
-  ],
+  providers: [],
 };
 
 /** Kitty Integration

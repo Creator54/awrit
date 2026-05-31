@@ -1,7 +1,6 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import <nixpkgs> { config = { permittedInsecurePackages = [ "electron-37.10.3" ]; }; } }:
 
 let
-  # Electron and its runtime dependencies
   electronDeps = with pkgs; [
     glib
     gtk3
@@ -45,6 +44,7 @@ let
     libuuid
     libxshmfence
     libva
+    systemd
   ];
 
   libPath = pkgs.lib.makeLibraryPath electronDeps;
@@ -54,10 +54,12 @@ pkgs.mkShell {
   name = "awrit";
   buildInputs = with pkgs; [
     bun
-    electron
+    electron_37
+    gsettings-desktop-schemas
   ] ++ electronDeps;
 
   LD_LIBRARY_PATH = libPath;
+  XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:${pkgs.adwaita-icon-theme}/share";
 
   shellHook = ''
     if [ ! -d "node_modules" ]; then

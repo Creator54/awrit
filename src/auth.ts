@@ -40,6 +40,22 @@ export class OAuthManager {
    */
   public async authenticate(): Promise<{ access_token: string, refresh_token?: string }> {
     return new Promise((resolve, reject) => {
+      const AUTH_TIMEOUT_MS = 2 * 60 * 1000;
+
+      let settled = false;
+      const finish = (err: Error | null, tokens?: any) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        this.cleanup();
+        if (err) reject(err);
+        else resolve(tokens);
+      };
+
+      const timeout = setTimeout(() => {
+        finish(new Error('Authentication timed out. The login was not completed within 2 minutes.'));
+      }, AUTH_TIMEOUT_MS);
+
       this.state = crypto.randomBytes(32).toString('hex');
       this.codeVerifier = crypto.randomBytes(64).toString('base64url');
       const codeChallenge = crypto
@@ -58,7 +74,7 @@ export class OAuthManager {
           if (returnedState !== this.state) {
             res.writeHead(400);
             res.end('State mismatch error');
-            reject(new Error('OAuth state mismatch'));
+            finish(new Error('OAuth state mismatch'));
             return;
           }
 
@@ -68,17 +84,14 @@ export class OAuthManager {
             
             try {
               const tokens = await this.exchangeCodeForTokens(code);
-              this.cleanup();
-              resolve(tokens);
+              finish(null, tokens);
             } catch (err) {
-              this.cleanup();
-              reject(err);
+              finish(err instanceof Error ? err : new Error(String(err)));
             }
           } else {
             res.writeHead(400);
             res.end(`Error: ${error || 'Unknown error'}`);
-            this.cleanup();
-            reject(new Error(error || 'Failed to get authorization code'));
+            finish(new Error(error || 'Failed to get authorization code'));
           }
         } else {
           res.writeHead(404);
@@ -92,10 +105,13 @@ export class OAuthManager {
         shell.openExternal(authUrl);
       });
 
-      this.server.on('error', (err) => {
-        console_.error(`OAuth server error [${this.provider.name}]:`, err);
-        this.cleanup();
-        reject(err);
+      this.server.on('error', (err: NodeJS.ErrnoException) => {
+        let message = `OAuth server error [${this.provider.name}]: ${err.message}`;
+        if (err.code === 'EADDRINUSE') {
+          message = `Port ${this.currentPort} is already in use. Cannot start OAuth callback server.`;
+        }
+        console_.error(message);
+        finish(new Error(message));
       });
     });
   }
@@ -319,46 +335,4 @@ export async function handleDeepLinkAuth(urlStr: string, session: Session): Prom
   } catch (e) {
     console_.error('[DeepLinkAuth] Error handling deep link:', e);
   }
-}
-/**
- * Pre-defined Google Session Establishment logic.
- */
-export async function establishGoogleSession(session: Session, accessToken: string): Promise<void> {
-  console_.log('Attempting to establish Google session in Electron...');
-  
-  const loginUrl = `https://www.google.com/accounts/OAuthLogin?auth=${accessToken}`;
-  
-  const response = await fetch(loginUrl, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch session cookies: ${response.statusText}`);
-  }
-
-  const body = await response.text();
-  const lines = body.split('\n');
-  for (const line of lines) {
-    const [key, value] = line.split('=');
-    if (key && value) {
-      const cookieName = key.trim();
-      const cookieValue = value.trim();
-      
-      await session.cookies.set({
-        url: 'https://google.com',
-        name: cookieName,
-        value: cookieValue,
-        domain: '.google.com',
-        path: '/',
-        secure: true,
-        httpOnly: true,
-        sameSite: 'no_restriction'
-      });
-    }
-  }
-  
-  console_.log('Google session establishment attempt complete.');
 }
