@@ -578,7 +578,15 @@ export async function createWindowWithToolbar(
         const isDark = nativeTheme.themeSource === 'dark';
         nativeTheme.themeSource = isDark ? 'light' : 'dark';
         console_.log(`[Dark Mode] ${isDark ? 'DISABLED (light)' : 'ENABLED (dark)'}`);
-        content.webContents.reload();
+        // WebContentsForceDark is a startup flag; override at runtime via meta tag injection
+        if (isDark) {
+          // Switching to light: disable force-dark by signaling light preference
+          content.webContents.insertCSS('html { color-scheme: light !important; }', { cssOrigin: 'author' });
+        } else {
+          // Switching back to dark: reload to re-enable force-dark
+          content.webContents.insertCSS('html { color-scheme: dark !important; }', { cssOrigin: 'author' });
+          content.webContents.reload();
+        }
         },
         toggleKeyHelp() {
         this.keyHelpVisible = !this.keyHelpVisible;

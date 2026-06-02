@@ -100,7 +100,7 @@ export function registerPaintedContent(
     // Flash Killer: Check if the frame is mostly white.
     // If it is, and we just started, keep it hidden.
     // We only check for the first 30 frames to keep performance high.
-    if ((w as any).paintCount < 30) {
+    if ((w as any).isSuppressingPaint && (w as any).paintCount < 30) {
       let whitePixels = 0;
       const totalPixels = imageSize.width * imageSize.height;
       // Sample 100 pixels to check for whiteness

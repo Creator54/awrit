@@ -155,7 +155,7 @@ const keybindings = {
     '<A-right>': forward,
     '<C-f>': find,
     '<C-r>': refresh,
-    '<C-S-d>': toggleDarkMode,
+    '<A-d>': toggleDarkMode,
   },
 
   '<Mouse4>': back,
