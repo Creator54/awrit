@@ -219,6 +219,8 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024');
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 // Disable features: UseBrowserCalculatedOrigin (crash fix) + HeadlessBrowser (Google detection)
 app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin,HeadlessBrowser');
+// Auto Dark Mode: force dark rendering for sites without native dark mode support
+app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark:inversion_method/cielab_based/image_behavior/none/text_lightness_threshold/150/background_lightness_threshold/205');
 
 // Enable remote debugging port for programmatic control (needed for MCP)
 app.commandLine.appendSwitch('remote-debugging-port', '9222');

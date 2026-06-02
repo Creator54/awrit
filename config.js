@@ -139,6 +139,7 @@ const keybindings = {
     '<M-[>': back,
     '<M-f>': find,
     '<M-r>': refresh,
+    '<M-S-d>': toggleDarkMode,
   },
   linux: {
     '<C-c>': copy,
@@ -154,6 +155,7 @@ const keybindings = {
     '<A-right>': forward,
     '<C-f>': find,
     '<C-r>': refresh,
+    '<C-S-d>': toggleDarkMode,
   },
 
   '<Mouse4>': back,
@@ -177,6 +179,11 @@ function refresh({ view }) {
 
 function find({ view }) {
   view.toggleFind();
+}
+
+/** @type {KeyBindingAction} */
+function toggleDarkMode({ view }) {
+  view.toggleForceDark();
 }
 
 const { exec } = require('child_process');

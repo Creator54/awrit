@@ -76,6 +76,7 @@ export type WindowView = {
   toggleFind: () => void;
   toggleDesignMode: () => void;
   toggleKeyHelp: () => void;
+  toggleForceDark: () => void;
   destroy: () => void;
   startSuppression: () => void;
   stopSuppression: (delay?: number) => void;
@@ -247,17 +248,17 @@ export async function createWindowWithToolbar(
       content.setBackgroundColor('#000000');
     }
 
-    // Safety timeout: never suppress for more than 5 seconds (monotonic — re-entry does not reset)
+    // Safety timeout: never suppress for more than 200ms (fast reveal, dark mode eliminates flash)
     if (suppressionDeadline <= Date.now()) {
       if (suppressionTimeout) clearTimeout(suppressionTimeout);
-      suppressionDeadline = Date.now() + 5000;
+      suppressionDeadline = Date.now() + 200;
       suppressionTimeout = setTimeout(() => {
          // @ts-expect-error
          content.isSuppressingPaint = false;
          content.webContents.invalidate();
          suppressionTimeout = null;
          suppressionDeadline = 0;
-      }, 5000);
+      }, 200);
     }
   };
 
@@ -296,17 +297,15 @@ export async function createWindowWithToolbar(
 
   content.webContents.on('did-navigate', () => {
     if (!options.transparent) {
-      // Inject white background as a user stylesheet.
-      // This ensures sites without explicit backgrounds are legible,
-      // but allows site-defined backgrounds to take precedence.
-      // Because the window background is PERMANENTLY black, there is no flash.
-      content.webContents.insertCSS('html { background-color: white; }', { cssOrigin: 'user' });
+      // Dark fallback background — matches terminal, no flash with WebContentsForceDark.
+      // Sites with explicit backgrounds override this (cssOrigin: 'user').
+      content.webContents.insertCSS('html { background-color: #1C1B22; }', { cssOrigin: 'user' });
     }
   });
 
   content.webContents.on('dom-ready', () => {
-    // Site has parsed its HTML, likely has content/loader to show.
-    stopSuppression(1000);
+    // Site has parsed its HTML, reveal quickly.
+    stopSuppression(100);
   });
 
   function registerPaints(size: WindowDimensions) {
@@ -574,6 +573,12 @@ export async function createWindowWithToolbar(
         console_.log(`[Design Mode] ${this.designMode ? 'ENABLED' : 'DISABLED'}`);
         this.content.webContents.send('awrit:set-design-mode', this.designMode);
         this.toolbar.webContents.send('awrit:design-mode-changed', this.designMode);
+        },
+        toggleForceDark() {
+        const isDark = nativeTheme.themeSource === 'dark';
+        nativeTheme.themeSource = isDark ? 'light' : 'dark';
+        console_.log(`[Dark Mode] ${isDark ? 'DISABLED (light)' : 'ENABLED (dark)'}`);
+        content.webContents.reload();
         },
         toggleKeyHelp() {
         this.keyHelpVisible = !this.keyHelpVisible;
