@@ -27,19 +27,15 @@ const profile = process.env.AWRIT_PROFILE || null;
 const debugPort = 9222;
 
 /** Secure Authentication Configuration
- * Required for system browser OAuth flows (bypasses "Insecure Browser" errors)
+ * Google OAuth Client ID - registers awrit as a legitimate app with Google.
+ * Login happens directly in awrit (no system browser redirect needed).
  **/
 const auth = {
-  /**
-   * List of secure authentication providers.
-   * When you visit a domain in the 'domains' list, awrit will open your
-   * system browser to complete the login securely.
-   **/
   providers: [
     {
       name: 'google',
       domains: ['accounts.google.com'],
-      clientId: '1003228370782-652d92q21gcknh408dpb3fhfl927jnld.apps.googleusercontent.com', // Add your Google Client ID here to enable secure login
+      clientId: '1003228370782-652d92q21gcknh408dpb3fhfl927jnld.apps.googleusercontent.com',
       redirectPort: 9223,
     },
   ],

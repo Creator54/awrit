@@ -1,4 +1,18 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
+
+  // Execute in main world (worldId 0) to override native APIs if needed
+  // Currently empty as native window.open is used for Auth
+  try {
+    webFrame.executeJavaScriptInIsolatedWorld(0, [{
+      code: `
+        // Main world scripts go here
+      `
+    }]).catch(e => {
+      console.error('[Awrit Preload] Failed to execute in main world:', e);
+    });
+  } catch (e) {
+    console.error('[Awrit Preload] Failed to inject main world scripts:', e);
+  }
 
 /**
  * awrit Secure Auth Bridge (Generic Solution)
@@ -20,9 +34,6 @@ try {
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
-    notifyAuthComplete: (data) => {
-      ipcRenderer.send('awrit:auth-complete', data);
-    }
   });
 
   ipcRenderer.on('awrit:set-design-mode', (_event, active) => {

@@ -24,10 +24,6 @@ import {
 import { registerPaintedContent, registerPaintedContentFallback } from './paint';
 import { Mode, setModes } from './tty/output';
 import { sessionPromise } from './session';
-import { 
-  getProviderForUrl, 
-  OAuthManager, 
-} from './auth';
 import { extensionsPromise, installedExtensionsPromise } from './extensions';
 import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
@@ -197,6 +193,7 @@ export async function createWindowWithToolbar(
       offscreen: true,
       nodeIntegration: false,
       contextIsolation: true,
+
       disableDialogs: true,
       disableBlinkFeatures: 'AutomationControlled',
       preload: path.resolve(__dirname, '../dist/content-preload.js'),
@@ -227,6 +224,7 @@ export async function createWindowWithToolbar(
     // Safety timeout: never suppress for more than 200ms (fast reveal, dark mode eliminates flash)
     if (suppressionTimeout) clearTimeout(suppressionTimeout);
     suppressionTimeout = setTimeout(() => {
+       if (popupActive) return;
        // @ts-expect-error
        content.isSuppressingPaint = false;
        content.webContents.invalidate();
@@ -234,7 +232,10 @@ export async function createWindowWithToolbar(
     }, 200);
   };
 
+  let popupActive = false;
+
   const stopSuppression = (delay = 300, force = false) => {
+    if (popupActive) return; // Never unsuppress while popup is displayed
     if (suppressionTimeout) clearTimeout(suppressionTimeout);
     
     const execute = () => {
@@ -260,6 +261,7 @@ export async function createWindowWithToolbar(
   };
 
   content.on('content-ready' as any, () => {
+    if (popupActive) return;
     console_.log('[Navigation] Content-ready detected (45 frames), reveal starting...');
     stopSuppression(0, true);
   });
@@ -279,7 +281,10 @@ export async function createWindowWithToolbar(
     stopSuppression(100);
   });
 
+  let lastPaintSize: WindowDimensions = padSize(size);
+
   function registerPaints(size: WindowDimensions) {
+    lastPaintSize = size;
     destructors.forEach((d) => { d(); });
     destructors.length = 0;
     refreshers.length = 0;
@@ -362,11 +367,51 @@ export async function createWindowWithToolbar(
   toolbar.blurWebView = () => {};
   content.blurWebView = () => {};
 
-  // Handle new window requests transparently
-  const handleNewWindow = ({ url }: { url: string }) => {
-    console_.log('[Navigation] Intercepted popup request, navigating main frame:', url);
-    content.webContents.loadURL(url);
-    return { action: 'deny' as const };
+  // Handle new window requests — allow popups for OAuth (preserves window.opener)
+  const handleNewWindow = ({ url, features }: { url: string; features: string }) => {
+    try {
+      console_.log('[Navigation] Popup requested:', url);
+      // Parse requested popup dimensions from window.open features string, e.g. "width=500,height=600"
+      const featureMap = new Map(
+        (typeof features === 'string' ? features : '').split(',').map((f) => {
+          const [k, v] = f.split('=');
+          return [k.trim(), v?.trim()];
+        }),
+      );
+      const requestedWidth = parseInt(featureMap.get('width') || '', 10);
+      const requestedHeight = parseInt(featureMap.get('height') || '', 10);
+      const [contentW, contentH] = content.getContentSize();
+      // Use requested size if available and positive, otherwise fall back to full content size
+      const w = Number.isFinite(requestedWidth) && requestedWidth > 0
+        ? Math.min(requestedWidth, contentW)
+        : contentW;
+      const h = Number.isFinite(requestedHeight) && requestedHeight > 0
+        ? Math.min(requestedHeight, contentH)
+        : contentH;
+      console_.log(`[Popup] Creating popup with dimensions ${w}x${h} (requested: ${requestedWidth || 'none'}x${requestedHeight || 'none'}, content: ${contentW}x${contentH})`);
+      
+      // Use native Electron window handling!
+      // By returning action: 'allow' and explicitly disabling offscreen,
+      // Chromium will natively link window.opener and handle trusted MessageEvents,
+      // perfectly supporting Google Identity Services.
+      return { 
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          show: true,
+          width: w,
+          height: h,
+          webPreferences: {
+            offscreen: false, // Must be false so the native window paints correctly
+            sandbox: false,   // CRITICAL: inherited sandbox: true breaks window.opener in Electron popups
+            contextIsolation: false, // Required to inject into window/navigator
+            preload: path.resolve(__dirname, '../dist/popup-preload.js'),
+          }
+        }
+      };
+    } catch (e) {
+      console_.log('[Navigation] CRITICAL CRASH in handleNewWindow:', e);
+      return { action: 'deny' };
+    }
   };
 
   toolbar.webContents.setWindowOpenHandler(handleNewWindow);
@@ -375,6 +420,35 @@ export async function createWindowWithToolbar(
   content.webContents.on('will-navigate', (event, url) => {
     const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
     console_.log(`[Navigation] Will navigate to: ${displayUrl}, freezing display...`);
+
+    // If a popup is active and the main frame navigates to a different origin,
+    // the popup is no longer relevant — reset suppression so the new page renders.
+    if (popupActive) {
+      try {
+        const targetOrigin = new URL(url).origin;
+        const popupWindows = BrowserWindow.getAllWindows().filter(
+          (w) => w !== toolbar && w !== content && !w.isDestroyed()
+        );
+        for (const popup of popupWindows) {
+          const popupUrl = popup.webContents.getURL();
+          if (popupUrl) {
+            const popupOrigin = new URL(popupUrl).origin;
+            if (targetOrigin !== popupOrigin) {
+              console_.log(`[Navigation] Main frame navigating from popup origin ${popupOrigin} to ${targetOrigin}, resetting popup state`);
+              popupActive = false;
+              view.focusedContent = content.webContents;
+              // @ts-expect-error
+              content.isSuppressingPaint = false;
+              popup.close();
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console_.log('[Navigation] Error checking popup origin during will-navigate:', e);
+      }
+    }
+
     startSuppression();
   });
 
@@ -387,42 +461,6 @@ export async function createWindowWithToolbar(
       // Reset input focus state on navigation
       view.inputFocused = false;
       view.toolbar.webContents.send('awrit:input-focus-changed', false);
-
-      const provider = getProviderForUrl(url);
-      if (provider) {
-        console_.log(`[Auth Bridge] Intercepted navigation for provider [${provider.name}], triggering system browser...`);
-        
-        // Prevent the navigation in Electron
-        event.preventDefault();
-        // Clear suppression since we're not actually navigating
-        stopSuppression(0);
-        
-        // Show a helpful message in awrit
-        content.webContents.executeJavaScript(`
-          document.body.innerHTML = \`
-            <div style="background: #1C1B22; color: white; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
-              <h1 style="margin-bottom: 10px;">Login with ${provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}</h1>
-              <p style="color: #ccc; margin-bottom: 20px;">Please complete the login in your system browser...</p>
-              <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 30px;"></div>
-              <button onclick="window.history.back()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button>
-              <style>
-                @keyframes spin { to { transform: rotate(360deg); } }
-              </style>
-            </div>
-          \`;
-        `).catch(() => {});
-
-        const manager = new OAuthManager(provider);
-        manager.authenticate().then(async tokens => {
-          console_.log(`[Auth Bridge] Successfully got tokens for ${provider.name}`);
-          if (provider.establishSession) {
-            await provider.establishSession(content.webContents.session, tokens.access_token);
-          }
-          content.webContents.reload();
-        }).catch(err => {
-          console_.error(`[Auth Bridge] Failed:`, err);
-        });
-      }
     }
   });
 
@@ -617,7 +655,7 @@ export async function createWindowWithToolbar(
       destroyed = true;
       ipcCleanup();
       ipcMain.removeListener('awrit:open-external', onOpenExternal);
-      ipcMain.removeListener('awrit:request-secure-login', onRequestSecureLogin);
+
       destructors.forEach(d => { d(); });
       destructors.length = 0;
       refreshers.length = 0;
@@ -693,26 +731,11 @@ export async function createWindowWithToolbar(
   setTimeout(kickstart, 3000);
 
   const onOpenExternal = (_event: any, url: string) => {
-
     console_.log('[Auth Bridge] Request to open external URL:', url);
     shell.openExternal(url);
   };
-  
-  const onRequestSecureLogin = (_event: any, config: any) => {
-    console_.log(`[Auth Bridge] Received login request for: ${config.name}`);
-    const manager = new OAuthManager(config);
-    manager.authenticate().then(async tokens => {
-      console_.log(`[Auth Bridge] Login successful for ${config.name}`);
-      if (config.name === 'google') {
-        const { establishGoogleSession } = require('./auth');
-        await establishGoogleSession(content.webContents.session, tokens.access_token);
-      }
-      content.webContents.reload();
-    }).catch(err => console_.error(`[Auth Bridge] Login failed:`, err));
-  };
 
   ipcMain.on('awrit:open-external', onOpenExternal);
-  ipcMain.on('awrit:request-secure-login', onRequestSecureLogin);
   ipcMain.on('awrit:input-focus', (event: any, focused: boolean) => {
     if (event.sender === content.webContents) {
       view.inputFocused = focused;

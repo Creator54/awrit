@@ -90,7 +90,7 @@
         chmod -R +w node_modules
         patchShebangs node_modules
 
-        bun build src/index.ts src/preload.js src/content-preload.js \
+        bun build src/index.ts src/preload.js src/content-preload.js src/popup-preload.js \
           --outdir dist --root src \
           --target node --format cjs \
           --external electron --external '../config.js' --external '*.node'
@@ -159,7 +159,7 @@
     in {
       default = pkgs.mkShell {
         name = "awrit";
-        buildInputs = [ pkgs.bun pkgs.electron_37 ] ++ (electronDeps pkgs);
+        buildInputs = [ pkgs.bun pkgs.electron ] ++ (electronDeps pkgs);
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (electronDeps pkgs);
         shellHook = ''
           if [ ! -d "node_modules" ]; then

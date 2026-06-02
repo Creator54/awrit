@@ -50,7 +50,7 @@ await $`mkdir -p ${root}/dist`.nothrow().quiet();
 
 {
   const { success } = await Bun.build({
-    entrypoints: [join(root, 'src/index.ts'), join(root, 'src/preload.js'), join(root, 'src/content-preload.js')],
+    entrypoints: [join(root, 'src/index.ts'), join(root, 'src/preload.js'), join(root, 'src/content-preload.js'), join(root, 'src/popup-preload.js')],
     outdir: join(root, 'dist'),
     root: join(root, 'src'),
     target: 'node',

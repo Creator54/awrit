@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { config = { permittedInsecurePackages = [ "electron-37.10.3" ]; }; } }:
+{ pkgs ? import <nixpkgs> {} }:
 
 let
   electronDeps = with pkgs; [
@@ -54,7 +54,7 @@ pkgs.mkShell {
   name = "awrit";
   buildInputs = with pkgs; [
     bun
-    electron_37
+    electron
     gsettings-desktop-schemas
   ] ++ electronDeps;
 

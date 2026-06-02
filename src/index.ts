@@ -221,6 +221,8 @@ app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('disable-features', 'UseBrowserCalculatedOrigin,HeadlessBrowser');
 // Auto Dark Mode: force dark rendering for sites without native dark mode support
 app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark:inversion_method/cielab_based/image_behavior/none/text_lightness_threshold/150/background_lightness_threshold/205');
+// Disable site isolation so cross-origin iframes (Google GIS, OAuth buttons) receive mouse/keyboard input in offscreen mode
+app.commandLine.appendSwitch('disable-site-isolation-trials');
 
 // Enable remote debugging port for programmatic control (needed for MCP)
 app.commandLine.appendSwitch('remote-debugging-port', '9222');

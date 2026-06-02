@@ -147,6 +147,7 @@ function coordsFromPx(cellToPx: number, px: number) {
 export function registerPaintedContentFallback(
   w: BrowserWindow,
   layoutNode: LayoutNode,
+  z?: number,
 ): PaintedContent {
   const contents = w.webContents;
   let paintedImage: PaintedImage | undefined;
@@ -198,14 +199,14 @@ export function registerPaintedContentFallback(
       buffer.write(bitmap, imageSize.width * 4);
       
       setModes([Mode.pendingUpdate], true);
-      paintedImage = paintImage(buffer, imageSize, position);
+      paintedImage = paintImage(buffer, imageSize, position, z !== undefined ? { z } : undefined);
       setModes([Mode.pendingUpdate], false);
 
       result.buffer = buffer;
       result.size = imageBufferSize;
     }
     if (options['debug-paint']) {
-      console_.error('paint (fallback)', result.buffer.nameBase64, image.getSize(), 'dirty', dirty);
+      console_.error('paint (fallback)', result.buffer?.nameBase64, image.getSize(), 'dirty', dirty);
     }
     if (options['no-paint']) {
       return;

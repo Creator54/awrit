@@ -47,8 +47,7 @@ export function handleInput(evt: TermEvent): boolean {
       }
 
       const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
-      const targetWindow = isToolbarActive ? view.toolbar : view.content;
-      const webContents = targetWindow.webContents;
+      const webContents = isToolbarActive ? view.toolbar.webContents : view.focusedContent;
       
       // OPTIMIZED FOCUS: Only focus if not already focused
       if (view.focusedContent !== webContents) {
@@ -135,7 +134,7 @@ export function handleInput(evt: TermEvent): boolean {
       const isInToolbar = isOverlayActive;
 
       const targetWindow = isInToolbar ? view.toolbar : view.content;
-      const targetContents = targetWindow.webContents;
+      const targetContents = isInToolbar ? targetWindow.webContents : view.focusedContent;
 
       // OPTIMIZED FOCUS: Only focus if not already focused
       if (view.focusedContent !== targetContents) {

@@ -118,10 +118,12 @@ export function paintImage(
   buffer: ShmGraphicBuffer,
   size: Size,
   position: { x: { cell: number; px: number }; y: { cell: number; px: number } },
+  options?: { z?: number },
 ): PaintedImage {
   const id = imageId();
+  const zStr = options?.z !== undefined ? `,z=${options.z}` : '';
   placeCursor({ x: position.x.cell, y: position.y.cell });
-  const control = `i=${id},X=${position.x.px},Y=${position.y.px}`;
+  const control = `i=${id},X=${position.x.px},Y=${position.y.px}${zStr}`;
   paintBitmap(buffer.nameBase64, size, control);
 
   return {
