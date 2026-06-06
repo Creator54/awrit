@@ -18,10 +18,12 @@ export interface BrowserToolbar {
   onFindNext: (callback: () => void) => void;
   onFindPrev: (callback: () => void) => void;
   onUrlChanged: (callback: (url: string) => void) => void;
+  onUpdateTargetUrl: (callback: (url: string) => void) => void;
   onNavigationStateChanged: (callback: (state: NavigationState) => void) => void;
   onLoadingStarted: (callback: () => void) => void;
   onLoadingStopped: (callback: () => void) => void;
   onLoadingProgress: (callback: (progress: number) => void) => void;
+  onLoadingUrl: (callback: (url: string) => void) => void;
   onToggleUrlBar: (callback: () => void) => void;
   onSetUrlBarVisible: (callback: (visible: boolean) => void) => void;
   onDesignModeChanged: (callback: (active: boolean) => void) => void;
@@ -51,6 +53,8 @@ interface Suggestion extends HistoryItem {
 export function Toolbar() {
   const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [url, setUrl] = createSignal('');
+  const [hoveredUrl, setHoveredUrl] = createSignal('');
+  const [loadingUrl, setLoadingUrl] = createSignal('');
   const [lastCommittedUrl, setLastCommittedUrl] = createSignal('');
   const [omniboxVisible, setOmniboxVisible] = createSignal(false);
   const [history, setHistory] = createSignal<HistoryItem[]>([]);
@@ -71,8 +75,13 @@ export function Toolbar() {
     }
   });
 
+  window.ipc.onUpdateTargetUrl((hoverUrl: string) => {
+    setHoveredUrl(hoverUrl);
+  });
+
   window.ipc.onNavigationStateChanged((state) => setNavigationState(state));
   window.ipc.onLoadingProgress((p) => setLoadingProgress(p));
+  window.ipc.onLoadingUrl((lUrl) => setLoadingUrl(lUrl));
   window.ipc.onLoadingStopped(() => setLoadingProgress(0));
 
   window.ipc.onSetUrlBarVisible((visible: boolean) => {
@@ -278,6 +287,13 @@ export function Toolbar() {
               </For>
             </div>
           </div>
+        </div>
+      </Show>
+
+      {/* Hover Link Indicator */}
+      <Show when={loadingUrl() || hoveredUrl()}>
+        <div class="hover-link-indicator animate-fade-in">
+          {loadingUrl() || hoveredUrl()}
         </div>
       </Show>
     </>

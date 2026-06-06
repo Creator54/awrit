@@ -17,7 +17,9 @@ contextBridge.exposeInMainWorld('ipc', {
   onLoadingStarted: (callback) => ipcRenderer.on('content:loading-started', callback),
   onLoadingStopped: (callback) => ipcRenderer.on('content:loading-stopped', callback),
   onLoadingProgress: (callback) => ipcRenderer.on('content:loading-progress', (_event, progress) => callback(progress)),
+  onLoadingUrl: (callback) => ipcRenderer.on('content:loading-url', (_event, url) => callback(url)),
   onUrlChanged: (callback) => ipcRenderer.on('content:url-changed', (_event, url) => callback(url)),
+  onUpdateTargetUrl: (callback) => ipcRenderer.on('content:update-target-url', (_event, url) => callback(url)),
   onNavigationStateChanged: (callback) =>
     ipcRenderer.on('content:navigation-state-changed', (_event, state) => callback(state)),
   onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', callback),

@@ -412,6 +412,8 @@ export async function createWindowWithToolbar(
   content.webContents.setFrameRate(60);
   toolbar.webContents.setFrameRate(30); // Toolbar is mostly static
 
+  content.webContents.setMaxListeners(30);
+
   toolbar.webContents.on('cursor-changed', updateCursor);
   content.webContents.on('cursor-changed', updateCursor);
 
@@ -459,7 +461,7 @@ export async function createWindowWithToolbar(
       // Chromium will natively link window.opener and handle trusted MessageEvents,
       // perfectly supporting Google Identity Services.
       return { 
-        action: 'allow',
+        action: 'allow' as const,
         overrideBrowserWindowOptions: {
           show: true,
           width: w,
@@ -474,7 +476,7 @@ export async function createWindowWithToolbar(
       };
     } catch (e) {
       console_.log('[Navigation] CRITICAL CRASH in handleNewWindow:', e);
-      return { action: 'deny' };
+      return { action: 'deny' as const };
     }
   };
 
@@ -917,13 +919,33 @@ function setupToolbarIPC(
   };
 
   const onLoadingStarted = () => { toolbarContents.send('content:loading-started'); startProgress(); };
-  const onLoadingStopped = () => { toolbarContents.send('content:loading-stopped'); stopProgress(); };
+  const onLoadingStopped = () => { 
+    toolbarContents.send('content:loading-stopped'); 
+    toolbarContents.send('content:loading-url', ''); // Clear loading URL on stop
+    stopProgress(); 
+  };
   const onDidNavigate = (_e: any, url: string) => {
     toolbarContents.send('content:url-changed', url);
     updateNavigationState();
   };
   const onDidNavigateInPage = (_e: any, url: string, isMainFrame: boolean) => {
     if (isMainFrame) { toolbarContents.send('content:url-changed', url); updateNavigationState(); }
+  };
+
+  const onUpdateTargetUrl = (_e: any, url: string) => {
+    toolbarContents.send('content:update-target-url', url);
+  };
+
+  const onDidStartNavigation = (_e: any, url: string, isInPlace: boolean, isMainFrame: boolean) => {
+    if (isMainFrame && !isInPlace) {
+      toolbarContents.send('content:loading-url', url);
+    }
+  };
+
+  const onDidRedirectNavigation = (_e: any, url: string, isInPlace: boolean, isMainFrame: boolean) => {
+    if (isMainFrame && !isInPlace) {
+      toolbarContents.send('content:loading-url', url);
+    }
   };
 
   const updateNavigationState = () => {
@@ -944,9 +966,12 @@ function setupToolbarIPC(
   contentContents.on('did-stop-loading', onLoadingStopped);
   contentContents.on('did-navigate', onDidNavigate);
   contentContents.on('did-navigate-in-page', onDidNavigateInPage);
+  contentContents.on('did-start-navigation', onDidStartNavigation);
+  contentContents.on('did-redirect-navigation', onDidRedirectNavigation);
   contentContents.on('did-start-navigation', updateNavigationState);
   contentContents.on('did-finish-load', updateNavigationState);
   contentContents.on('did-frame-finish-load', updateNavigationState);
+  contentContents.on('update-target-url', onUpdateTargetUrl);
 
   // Register per-window handlers in the routing Maps
   ensureGlobalIPCHandlers();
@@ -967,8 +992,11 @@ function setupToolbarIPC(
     contentContents.off('did-stop-loading', onLoadingStopped);
     contentContents.off('did-navigate', onDidNavigate);
     contentContents.off('did-navigate-in-page', onDidNavigateInPage);
+    contentContents.off('did-start-navigation', onDidStartNavigation);
+    contentContents.off('did-redirect-navigation', onDidRedirectNavigation);
     contentContents.off('did-start-navigation', updateNavigationState);
     contentContents.off('did-finish-load', updateNavigationState);
     contentContents.off('did-frame-finish-load', updateNavigationState);
+    contentContents.off('update-target-url', onUpdateTargetUrl);
   };
 }
