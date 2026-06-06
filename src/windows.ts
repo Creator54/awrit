@@ -374,8 +374,7 @@ export async function createWindowWithToolbar(
     toolbar.webContents.invalidate();
   }
 
-  // Eagerly load the toolbar to prevent offscreen focus black holes
-  loadToolbarContent();
+  // Toolbar is lazy-loaded on first toggle of omnibox, find, or key-help
 
   extensionsPromise.then((extensions) => {
     if (extensions) extensions.addTab(content.webContents, content);
@@ -625,6 +624,7 @@ export async function createWindowWithToolbar(
           this.toolbar.webContents.once('did-finish-load', sendSignal);
         } else {
           sendSignal();
+          setTimeout(sendSignal, 100);
         }
 
         this.toolbar.setIgnoreMouseEvents(!this.findVisible && !this.omniboxVisible && !this.keyHelpVisible);
