@@ -74,6 +74,7 @@ export type Actions = {
   back: () => void;
   forward: () => void;
   reload: () => void;
+  toggleDevTools: () => void;
 };
 
 export type WindowView = {
@@ -718,6 +719,13 @@ export async function createWindowWithToolbar(
     back: () => { startSuppression(); content.webContents.goBack(); },
     forward: () => { startSuppression(); content.webContents.goForward(); },
     reload: () => { startSuppression(); content.webContents.reload(); },
+    toggleDevTools: () => {
+      if (content.webContents.isDevToolsOpened()) {
+        content.webContents.closeDevTools();
+      } else {
+        content.webContents.openDevTools({ mode: 'detach' });
+      }
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;

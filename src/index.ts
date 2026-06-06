@@ -79,6 +79,10 @@ function loadConfig(config: typeof import('../config.js')) {
     bindings['<C-t>'] = function newWindow() { createNewWindow(); return true; };
     bindings['<C-Tab>'] = function switchWindow() { return cycleFocus(); };
 
+    // DevTools
+    bindings['<F12>'] = function toggleDevTools({ view }: { view?: WindowView }) { view?.toggleDevTools(); };
+    bindings['<C-S-i>'] = function toggleDevTools({ view }: { view?: WindowView }) { view?.toggleDevTools(); };
+
     loadKeyBindings({ keybindings: bindings });
   }
   if (config.profile !== undefined) {
