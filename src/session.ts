@@ -116,11 +116,22 @@ export const sessionPromise = new Promise<Session>((resolve) => {
     session.setSpellCheckerEnabled(false);
 
     // Auto-allow media permissions for offscreen rendering
-    session.setPermissionCheckHandler((_webContents, permission) => {
-      const allowedPermissions = ['media', 'mediaDevice', 'notifications', 'fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
-      if (allowedPermissions.includes(permission)) {
+    session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+      const autoAllow = ['fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
+      if (autoAllow.includes(permission)) {
         return true;
       }
+      
+      try {
+        const origin = new URL(requestingOrigin).origin;
+        const perms = sitePermissions.get(origin);
+        if (perms && perms[permission] !== undefined) {
+          // If the permission is blocked (false), return false.
+          // If it is granted (true or string like 'audio,video'), return true.
+          return !!perms[permission];
+        }
+      } catch {}
+      
       return false;
     });
 

@@ -295,6 +295,24 @@ export function Toolbar() {
                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                 </div>
               </Show>
+              <Show when={sitePerms()?.notifications === true}>
+                <div 
+                   class="flex items-center text-yellow-500 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'notifications'); }}
+                   title="Click to revoke Notifications access"
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                </div>
+              </Show>
+              <Show when={sitePerms()?.notifications === false}>
+                <div 
+                   class="flex items-center text-gray-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'notifications'); }}
+                   title="Notifications blocked. Click to reset."
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                </div>
+              </Show>
 
               <input
                 ref={inputRef}
@@ -418,7 +436,9 @@ export function Toolbar() {
                       req().mediaTypes?.includes('video') && req().mediaTypes?.includes('audio') ? 'Camera and Microphone' :
                       req().mediaTypes?.includes('video') ? 'Camera' :
                       req().mediaTypes?.includes('audio') ? 'Microphone' : 'Camera/Microphone'
-                    ) : req().permission}
+                    ) : req().permission === 'geolocation' ? 'Location' : 
+                        req().permission === 'notifications' ? 'Notifications' : 
+                        req().permission}
                   </span>.
                 </div>
 
