@@ -85,7 +85,11 @@ function parseKeyBinding(binding: string): string[] {
           case 'delete':
           case 'insert':
           case 'space':
-            // These are already correct
+          case 'plus':
+            lastPart = '+';
+            break;
+          case 'minus':
+            lastPart = '-';
             break;
         }
         

@@ -29,6 +29,7 @@ import { clearPlacements, paintInitialFrame } from './tty/kittyGraphics';
 import * as out from './tty/output';
 import { getWindowSize as rawGetWindowSize, ShmGraphicBuffer, type WindowSize } from 'awrit-native-rs';
 import { getAllKeyBindings } from './keybindings';
+import { loadZoomState, getZoomFactor, setZoomFactor, saveZoomState } from './zoom-state';
 
 export function getWindowSize() {
   try {
@@ -318,6 +319,16 @@ export async function createWindowWithToolbar(
       // Because the window background is PERMANENTLY black, there is no flash.
       content.webContents.insertCSS('html { background-color: #1C1B22; }', { cssOrigin: 'user' });
     }
+
+    // Load and apply saved zoom for navigated origin
+    try {
+      const url = view.content.webContents.getURL();
+      const origin = new URL(url).origin;
+      const savedZoom = getZoomFactor(origin);
+      if (savedZoom !== 1.0) {
+        view.content.webContents.setZoomFactor(savedZoom);
+      }
+    } catch {}
   });
 
   content.webContents.on('dom-ready', () => {
@@ -384,6 +395,16 @@ export async function createWindowWithToolbar(
   resetForFrameQuirk(content.webContents);
   startSuppression();
   content.webContents.loadURL(initialUrl);
+
+  // Apply saved zoom for initial URL
+  try {
+    const origin = new URL(initialUrl).origin;
+    const savedZoom = getZoomFactor(origin);
+    if (savedZoom !== 1.0) {
+      content.webContents.setZoomFactor(savedZoom);
+    }
+  } catch {}
+
   content.webContents.invalidate();
 
   // Limit offscreen rendering frame rate to reduce CPU usage.

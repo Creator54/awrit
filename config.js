@@ -242,6 +242,11 @@ const keybindings = {
     'n': (args) => isVimNavigating(args) ? (args.view?.findNext() || true) : false,
     'N': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
     'p': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
+
+    // Zoom controls
+    '<A-=>': zoomIn,
+    '<A-minus>': zoomOut,
+    '<C-0>': zoomReset,
   },
   linux: {
     '<C-c>': copy,
@@ -277,6 +282,11 @@ const keybindings = {
     'n': (args) => isVimNavigating(args) ? (args.view?.findNext() || true) : false,
     'N': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
     'p': (args) => isVimNavigating(args) ? (args.view?.findPrev() || true) : false,
+
+    // Zoom controls
+    '<A-=>': zoomIn,
+    '<A-minus>': zoomOut,
+    '<C-0>': zoomReset,
   },
 
   '<Mouse4>': back,
@@ -310,6 +320,9 @@ function toggleDarkMode({ view }) {
 
 const { exec } = require('child_process');
 const electron = require('electron');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 // Clipboard timeout to prevent blocking (execSync causes freeze if xclip hangs)
 const CLIPBOARD_TIMEOUT_MS = 500;
@@ -468,6 +481,123 @@ function diagnosticCopy() {
 /** @type {KeyBindingAction} */
 function quit() {
   process.emit('SIGINT');
+}
+
+// Zoom limits
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const ZOOM_STEP = 0.1;
+
+/**
+ * Helper to extract origin from a URL.
+ * Returns empty string on parse failure.
+ */
+function getOrigin(url) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
+}
+
+/** @type {KeyBindingAction} */
+function zoomIn({ view }) {
+  if (!view) return false;
+  try {
+    const url = view.content.webContents.getURL();
+    const origin = getOrigin(url);
+    if (!origin) return false;
+
+    const current = view.content.webContents.getZoomFactor();
+    const newZoom = Math.min(current + ZOOM_STEP, ZOOM_MAX);
+    view.content.webContents.setZoomFactor(newZoom);
+
+    // Persist zoom state
+    const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
+    const zoomFile = path.join(zoomDir, 'zoom-state.json');
+    let zoomState = {};
+    try {
+      if (fs.existsSync(zoomFile)) {
+        zoomState = JSON.parse(fs.readFileSync(zoomFile, 'utf8'));
+      }
+    } catch {}
+    zoomState[origin] = newZoom;
+    try {
+      if (!fs.existsSync(zoomDir)) fs.mkdirSync(zoomDir, { recursive: true });
+      fs.writeFileSync(zoomFile, JSON.stringify(zoomState, null, 2));
+    } catch {}
+
+    return true;
+  } catch (err) {
+    console.error('[Action] zoomIn failed:', err.message);
+    return false;
+  }
+}
+
+/** @type {KeyBindingAction} */
+function zoomOut({ view }) {
+  if (!view) return false;
+  try {
+    const url = view.content.webContents.getURL();
+    const origin = getOrigin(url);
+    if (!origin) return false;
+
+    const current = view.content.webContents.getZoomFactor();
+    const newZoom = Math.max(current - ZOOM_STEP, ZOOM_MIN);
+    view.content.webContents.setZoomFactor(newZoom);
+
+    // Persist zoom state
+    const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
+    const zoomFile = path.join(zoomDir, 'zoom-state.json');
+    let zoomState = {};
+    try {
+      if (fs.existsSync(zoomFile)) {
+        zoomState = JSON.parse(fs.readFileSync(zoomFile, 'utf8'));
+      }
+    } catch {}
+    zoomState[origin] = newZoom;
+    try {
+      if (!fs.existsSync(zoomDir)) fs.mkdirSync(zoomDir, { recursive: true });
+      fs.writeFileSync(zoomFile, JSON.stringify(zoomState, null, 2));
+    } catch {}
+
+    return true;
+  } catch (err) {
+    console.error('[Action] zoomOut failed:', err.message);
+    return false;
+  }
+}
+
+/** @type {KeyBindingAction} */
+function zoomReset({ view }) {
+  if (!view) return false;
+  try {
+    const url = view.content.webContents.getURL();
+    const origin = getOrigin(url);
+    if (!origin) return false;
+
+    view.content.webContents.setZoomFactor(1.0);
+
+    // Persist zoom state (remove entry or set to 1.0)
+    const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
+    const zoomFile = path.join(zoomDir, 'zoom-state.json');
+    let zoomState = {};
+    try {
+      if (fs.existsSync(zoomFile)) {
+        zoomState = JSON.parse(fs.readFileSync(zoomFile, 'utf8'));
+      }
+    } catch {}
+    zoomState[origin] = 1.0;
+    try {
+      if (!fs.existsSync(zoomDir)) fs.mkdirSync(zoomDir, { recursive: true });
+      fs.writeFileSync(zoomFile, JSON.stringify(zoomState, null, 2));
+    } catch {}
+
+    return true;
+  } catch (err) {
+    console.error('[Action] zoomReset failed:', err.message);
+    return false;
+  }
 }
 
 const config = {
