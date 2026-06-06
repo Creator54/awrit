@@ -29,6 +29,11 @@ export interface BrowserToolbar {
   onDesignModeChanged: (callback: (active: boolean) => void) => void;
   onInputFocusChanged: (callback: (focused: boolean) => void) => void;
   onSetKeyHelpVisible: (callback: (data: { visible: boolean; bindings?: Array<{ action: string; keys: string[] }> }) => void) => void;
+  onPermissionRequest: (callback: (req: { id: number; permission: string; url: string; mediaTypes?: string[] }) => void) => void;
+  resolvePermission: (id: number, allowed: boolean, url: string, permission: string, mediaTypes?: string[]) => void;
+  getSitePermissions: (url: string) => Promise<Record<string, boolean>>;
+  revokeSitePermission: (url: string, permission: string) => void;
+  onSitePermissionsChanged: (callback: (perms: Record<string, boolean>) => void) => void;
   toggleUrlBar: () => void;
   toggleKeyHelp: () => void;
   toggleFind: () => void;
@@ -63,6 +68,8 @@ export function Toolbar() {
     canGoBack: false,
     canGoForward: false,
   });
+  const [permissionReq, setPermissionReq] = createSignal<{id: number, permission: string, url: string, mediaTypes?: string[]} | null>(null);
+  const [sitePerms, setSitePerms] = createSignal<Record<string, boolean>>({});
 
   let inputRef: HTMLInputElement | undefined;
   let suggestionsContainerRef: HTMLDivElement | undefined;
@@ -94,6 +101,20 @@ export function Toolbar() {
         inputRef?.focus();
         inputRef?.select();
       }, 50);
+    }
+  });
+
+  window.ipc.onPermissionRequest((req) => {
+    setPermissionReq(req);
+  });
+
+  window.ipc.onSitePermissionsChanged((perms) => {
+    setSitePerms(perms || {});
+  });
+
+  createEffect(() => {
+    if (lastCommittedUrl()) {
+      window.ipc.getSitePermissions(lastCommittedUrl()).then((perms) => setSitePerms(perms || {}));
     }
   });
 
@@ -175,6 +196,19 @@ export function Toolbar() {
     }
   });
 
+  // Global Escape handler for permission popup
+  createEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const req = permissionReq();
+      if (req && e.key === 'Escape') {
+        window.ipc.resolvePermission(req.id, false, req.url, req.permission, req.mediaTypes);
+        setPermissionReq(null);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', handleGlobalKeyDown));
+  });
+
   onMount(() => {
     const stored = localStorage.getItem('awrit:history');
     if (stored) setHistory(JSON.parse(stored));
@@ -215,6 +249,52 @@ export function Toolbar() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
+
+              <Show when={typeof sitePerms()?.media === 'string' ? (sitePerms()?.media as string).includes('video') : sitePerms()?.media === true}>
+                <div 
+                   class="flex items-center text-red-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'media'); }}
+                   title="Click to revoke Camera access"
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
+              </Show>
+              <Show when={typeof sitePerms()?.media === 'string' ? (sitePerms()?.media as string).includes('audio') : sitePerms()?.media === true}>
+                <div 
+                   class="flex items-center text-red-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'media'); }}
+                   title="Click to revoke Microphone access"
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                </div>
+              </Show>
+              <Show when={sitePerms()?.media === false}>
+                <div 
+                   class="flex items-center text-gray-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'media'); }}
+                   title="Camera/Microphone blocked. Click to reset."
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                </div>
+              </Show>
+              <Show when={sitePerms()?.geolocation === true}>
+                <div 
+                   class="flex items-center text-blue-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'geolocation'); }}
+                   title="Click to revoke Location access"
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.242-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
+              </Show>
+              <Show when={sitePerms()?.geolocation === false}>
+                <div 
+                   class="flex items-center text-gray-400 cursor-pointer px-1 hover:bg-[#2b2a33] rounded"
+                   onClick={(e) => { e.stopPropagation(); window.ipc.revokeSitePermission(lastCommittedUrl(), 'geolocation'); }}
+                   title="Location blocked. Click to reset."
+                >
+                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                </div>
+              </Show>
 
               <input
                 ref={inputRef}
@@ -290,11 +370,78 @@ export function Toolbar() {
         </div>
       </Show>
 
-      {/* Hover Link Indicator */}
+    {/* Hover Link Indicator */}
       <Show when={loadingUrl() || hoveredUrl()}>
         <div class="hover-link-indicator animate-fade-in">
           {loadingUrl() || hoveredUrl()}
         </div>
+      </Show>
+
+      {/* Permission Prompt */}
+      <Show when={permissionReq()}>
+        {(req) => (
+          <div class="zen-fixed-wrapper animate-fade-in" style={{ "z-index": 3000, "pointer-events": "auto" }}>
+            <div class="zen-backdrop" onMouseDown={() => { window.ipc.resolvePermission(req().id, false, req().url, req().permission, req().mediaTypes); setPermissionReq(null); }} />
+            <div class="permission-palette" onMouseDown={(e) => e.stopPropagation()}>
+              
+              {/* Header Row */}
+              <div class="input-container" style={{ "justify-content": "space-between" }}>
+                <div class="flex items-center gap-3">
+                  <div class="opacity-30 flex items-center">
+                    {/* Lock Icon */}
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <span class="text-[14px] text-[#fbfbfe] font-medium truncate" style={{ "max-width": "280px" }}>
+                    {getDomain(req().url)}
+                  </span>
+                </div>
+                
+                <button
+                  class="p-1 opacity-30 hover:opacity-100 hover:bg-[#2b2a33] rounded-md transition-colors"
+                  onClick={() => { window.ipc.resolvePermission(req().id, false, req().url, req().permission, req().mediaTypes); setPermissionReq(null); }}
+                  title="Dismiss (Deny)"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              {/* Solid Divider */}
+              <div class="h-[1px] bg-[#333333] w-full" />
+
+              {/* Content Area */}
+              <div class="p-5 flex flex-col gap-5">
+                <div class="text-[13.5px] text-[#8f8f9d] text-center leading-relaxed">
+                  wants to use your <span class="text-[#fbfbfe] font-medium">
+                    {req().permission === 'media' ? (
+                      req().mediaTypes?.includes('video') && req().mediaTypes?.includes('audio') ? 'Camera and Microphone' :
+                      req().mediaTypes?.includes('video') ? 'Camera' :
+                      req().mediaTypes?.includes('audio') ? 'Microphone' : 'Camera/Microphone'
+                    ) : req().permission}
+                  </span>.
+                </div>
+
+                {/* Actions */}
+                <div class="flex gap-2 justify-center">
+                  <button 
+                    class="px-5 py-2 text-[13px] font-medium bg-[#0060df] text-white rounded-md hover:bg-[#003eaa] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0060df] focus:ring-offset-2 focus:ring-offset-[#1c1b22]"
+                    onClick={() => { window.ipc.resolvePermission(req().id, true, req().url, req().permission, req().mediaTypes); setPermissionReq(null); }}
+                  >
+                    Allow
+                  </button>
+                  <button 
+                    class="px-5 py-2 text-[13px] font-medium bg-[#2b2a33] text-[#fbfbfe] border border-[#333333] rounded-md hover:bg-[#3e3d46] transition-colors focus:outline-none"
+                    onClick={() => { window.ipc.resolvePermission(req().id, false, req().url, req().permission, req().mediaTypes); setPermissionReq(null); }}
+                  >
+                    Deny
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
       </Show>
     </>
   );

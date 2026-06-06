@@ -18,7 +18,7 @@
       libxscrnsaver libxtst libxext libxcb
       libxi libxfixes libxrender libxcursor
       libxkbcommon nspr nss dbus cups libsecret
-      alsa-lib libnotify libdrm libgbm mesa libglvnd
+      alsa-lib libpulseaudio pipewire udev libnotify libdrm libgbm mesa libglvnd
       gsettings-desktop-schemas libpng libjpeg_turbo
       expat fontconfig freetype harfbuzz zlib libuuid libxshmfence libva
     ];

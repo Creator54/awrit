@@ -34,5 +34,11 @@ contextBridge.exposeInMainWorld('ipc', {
   toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
   toggleKeyHelp: () => ipcRenderer.send('toolbar:toggle-key-help'),
   toggleFind: () => ipcRenderer.send('toolbar:toggle-find'),
-  });
-
+  
+  // Permission handling
+  onPermissionRequest: (callback) => ipcRenderer.on('toolbar:permission-request', (_event, req) => callback(req)),
+  resolvePermission: (id, allowed, url, permission, mediaTypes) => ipcRenderer.send('toolbar:permission-response', { id, allowed, url, permission, mediaTypes }),
+  getSitePermissions: (url) => ipcRenderer.invoke('awrit:get-site-permissions', url),
+  revokeSitePermission: (url, permission) => ipcRenderer.send('awrit:revoke-site-permission', url, permission),
+  onSitePermissionsChanged: (callback) => ipcRenderer.on('awrit:site-permissions-changed', (_event, perms) => callback(perms)),
+});

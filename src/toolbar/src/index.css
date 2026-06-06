@@ -55,12 +55,7 @@ body {
     z-index: -1;
   }
 
-  .floating-palette {
-    /* Force unyielding width */
-    width: 650px !important;
-    min-width: 650px !important;
-    max-width: 650px !important;
-    
+  .floating-palette, .permission-palette {
     background-color: var(--palette-bg);
     border: 1px solid var(--palette-border);
     border-top: 1px solid var(--palette-highlight);
@@ -70,6 +65,19 @@ body {
     display: flex;
     flex-direction: column;
     pointer-events: auto;
+  }
+
+  .floating-palette {
+    /* Force unyielding width */
+    width: 650px !important;
+    min-width: 650px !important;
+    max-width: 650px !important;
+  }
+
+  .permission-palette {
+    width: 400px !important;
+    min-width: 400px !important;
+    max-width: 400px !important;
   }
 
   .input-container {
