@@ -5,7 +5,24 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
   try {
     webFrame.executeJavaScriptInIsolatedWorld(0, [{
       code: `
-        // Main world scripts go here
+        (function() {
+          // 1. Intercept navigator.clipboard.writeText
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            const originalWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+            navigator.clipboard.writeText = async (text) => {
+              window.postMessage({ type: 'awrit:copy', text: text }, '*');
+              return originalWriteText(text);
+            };
+          }
+
+          // 2. Intercept standard copy events (ctrl+c, context menu, etc)
+          document.addEventListener('copy', (e) => {
+            const text = window.getSelection().toString();
+            if (text) {
+              window.postMessage({ type: 'awrit:copy', text: text }, '*');
+            }
+          }, true);
+        })();
       `
     }]).catch(e => {
       console.error('[Awrit Preload] Failed to execute in main world:', e);
@@ -13,6 +30,13 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
   } catch (e) {
     console.error('[Awrit Preload] Failed to inject main world scripts:', e);
   }
+
+// Listen for clipboard messages from the main world
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'awrit:copy' && typeof event.data.text === 'string') {
+    ipcRenderer.send('awrit:copy-to-clipboard', event.data.text);
+  }
+});
 
 /**
  * awrit Secure Auth Bridge (Generic Solution)

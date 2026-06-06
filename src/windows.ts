@@ -7,6 +7,7 @@ import {
   screen,
   nativeTheme,
   shell,
+  clipboard,
 } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -722,6 +723,7 @@ export async function createWindowWithToolbar(
       destroyed = true;
       ipcCleanup();
       ipcMain.removeListener('awrit:open-external', onOpenExternal);
+      ipcMain.removeListener('awrit:copy-to-clipboard', onCopyToClipboard);
 
       destructors.forEach(d => { d(); });
       destructors.length = 0;
@@ -802,7 +804,14 @@ export async function createWindowWithToolbar(
     shell.openExternal(url);
   };
 
+  const onCopyToClipboard = (_event: any, text: string) => {
+    clipboard.writeText(text);
+    out.writeToTerminalClipboard(text);
+  };
+
   ipcMain.on('awrit:open-external', onOpenExternal);
+  ipcMain.on('awrit:copy-to-clipboard', onCopyToClipboard);
+
   ipcMain.on('awrit:input-focus', (event: any, focused: boolean) => {
     if (event.sender === content.webContents) {
       view.inputFocused = focused;
