@@ -16,6 +16,16 @@ let lastSentY = -1;
 let lastSentView: any = null;
 let lastSentMods = '';
 
+// Multi-click tracking
+const DOUBLE_CLICK_TIMEOUT = 500;
+const DOUBLE_CLICK_DISTANCE = 5; // Pixels
+let lastClickTime = 0;
+let lastClickX = -1;
+let lastClickY = -1;
+let lastClickButton: string | undefined;
+let lastClickTarget: any = null;
+let currentClickCount = 0;
+
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
 
 /**
@@ -145,6 +155,28 @@ export function handleInput(evt: TermEvent): boolean {
       const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);
       const adjustedY = Math.floor((rawY - targetNode.deviceLayout.y) / dpr);
 
+      if (kind === 'mouseDown') {
+        const now = Date.now();
+        const dist = Math.sqrt((adjustedX - lastClickX) ** 2 + (adjustedY - lastClickY) ** 2);
+
+        if (
+          now - lastClickTime < DOUBLE_CLICK_TIMEOUT &&
+          dist < DOUBLE_CLICK_DISTANCE &&
+          button === lastClickButton &&
+          targetContents === lastClickTarget
+        ) {
+          currentClickCount++;
+        } else {
+          currentClickCount = 1;
+        }
+
+        lastClickTime = now;
+        lastClickX = adjustedX;
+        lastClickY = adjustedY;
+        lastClickButton = button ?? undefined;
+        lastClickTarget = targetContents;
+      }
+
       if (kind === 'mouseMove') {
         const mods = electronMods.join(',');
         if (
@@ -237,7 +269,7 @@ export function handleInput(evt: TermEvent): boolean {
         y: adjustedY,
         button: electronButton,
         modifiers: electronMods,
-        clickCount: kind === 'mouseDown' ? 1 : 0,
+        clickCount: kind === 'mouseMove' ? 0 : currentClickCount,
       });
 
       if (kind === 'mouseDown' && button === 'left') {
