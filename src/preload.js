@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('ipc', {
   onUpdateTargetUrl: (callback) => ipcRenderer.on('content:update-target-url', (_event, url) => callback(url)),
   onNavigationStateChanged: (callback) =>
     ipcRenderer.on('content:navigation-state-changed', (_event, state) => callback(state)),
-  onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', callback),
+  onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', (_event, visible) => callback(visible)),
   onToggleUrlBar: (callback) => ipcRenderer.on('toolbar:toggle-url-bar', () => callback()),
   onSetUrlBarVisible: (callback) => ipcRenderer.on('omnibox:set-visible', (_event, visible) => callback(visible)),
   onDesignModeChanged: (callback) => ipcRenderer.on('awrit:design-mode-changed', (_event, active) => callback(active)),

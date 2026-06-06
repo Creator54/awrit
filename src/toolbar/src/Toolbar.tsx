@@ -71,7 +71,13 @@ export function Toolbar() {
   const [permissionReq, setPermissionReq] = createSignal<{id: number, permission: string, url: string, mediaTypes?: string[]} | null>(null);
   const [sitePerms, setSitePerms] = createSignal<Record<string, boolean>>({});
 
+  const [findVisible, setFindVisible] = createSignal(false);
+  const [findText, setFindText] = createSignal('');
+  const [activeMatch, setActiveMatch] = createSignal(0);
+  const [totalMatches, setTotalMatches] = createSignal(0);
+
   let inputRef: HTMLInputElement | undefined;
+  let findInputRef: HTMLInputElement | undefined;
   let suggestionsContainerRef: HTMLDivElement | undefined;
 
   // IPC Listeners
@@ -112,11 +118,64 @@ export function Toolbar() {
     setSitePerms(perms || {});
   });
 
+  window.ipc.onToggleFind((visible?: boolean) => {
+    const isVisible = visible !== undefined ? visible : !findVisible();
+    setFindVisible(isVisible);
+    if (isVisible) {
+      setOmniboxVisible(false);
+      setTimeout(() => {
+        findInputRef?.focus();
+        findInputRef?.select();
+      }, 50);
+    }
+  });
+
+  window.ipc.onFindResult((result) => {
+    setActiveMatch(result.activeMatchOrdinal);
+    setTotalMatches(result.matches);
+  });
+
   createEffect(() => {
     if (lastCommittedUrl()) {
       window.ipc.getSitePermissions(lastCommittedUrl()).then((perms) => setSitePerms(perms || {}));
     }
   });
+
+  const performSearch = (text: string, options?: any) => {
+    if (!text) return;
+    window.ipc.findInPage(text, options);
+  };
+
+  const debouncedFindInPage = debounce(250, (text: string) => {
+    performSearch(text);
+  });
+
+  const handleFindInput = (e: InputEvent) => {
+    const val = (e.currentTarget as HTMLInputElement).value;
+    setFindText(val);
+    if (val) {
+      debouncedFindInPage(val);
+    } else {
+      debouncedFindInPage.cancel();
+      setActiveMatch(0);
+      setTotalMatches(0);
+      window.ipc.stopFindInPage();
+    }
+  };
+
+  const handleFindKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      debouncedFindInPage.cancel();
+      if (findText()) {
+        performSearch(findText(), { findNext: true, forward: !e.shiftKey });
+      }
+      e.stopPropagation();
+    } else if (e.key === 'Escape') {
+      window.ipc.toggleFind();
+      window.ipc.stopFindInPage();
+      e.stopPropagation();
+    }
+  };
 
   const getUrlOrSearch = (input: string): { url: string; title: string; isSearch: boolean } => {
     const trimmed = input.trim();
@@ -203,6 +262,9 @@ export function Toolbar() {
       if (req && e.key === 'Escape') {
         window.ipc.resolvePermission(req.id, false, req.url, req.permission, req.mediaTypes);
         setPermissionReq(null);
+      } else if (findVisible() && e.key === 'Escape') {
+        window.ipc.toggleFind();
+        window.ipc.stopFindInPage();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -230,6 +292,69 @@ export function Toolbar() {
             'z-index': 2000,
           }}
         />
+      </Show>
+
+      {/* Find in Page Popup */}
+      <Show when={findVisible()}>
+        <div class="zen-fixed-wrapper animate-fade-in" style={{ "z-index": 2500, "pointer-events": "auto", "align-items": "flex-start", "padding-top": "16px" }}>
+          <div 
+            class="find-palette" 
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div class="input-container" style={{ padding: "0 12px" }}>
+              <div class="opacity-30 flex items-center pr-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              </div>
+              
+              <input
+                ref={findInputRef}
+                type="text"
+                class="palette-input"
+                value={findText()}
+                onInput={handleFindInput}
+                onKeyDown={handleFindKeyDown}
+                placeholder="Find in page"
+                spellcheck={false}
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              />
+              
+              <Show when={totalMatches() > 0}>
+                <span class="text-[12px] opacity-30 font-mono pr-2">
+                  {activeMatch()} / {totalMatches()}
+                </span>
+              </Show>
+
+              <div class="flex items-center gap-1 opacity-40 pr-1">
+                <button 
+                  onClick={() => window.ipc.findInPage(findText(), { findNext: true, forward: false })}
+                  class="p-1 hover:bg-[#2b2a33] rounded-md transition-colors"
+                  title="Previous (Shift+Enter)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <button 
+                  onClick={() => window.ipc.findInPage(findText(), { findNext: true, forward: true })}
+                  class="p-1 hover:bg-[#2b2a33] rounded-md transition-colors"
+                  title="Next (Enter)"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+              
+              <div class="w-[1px] h-4 bg-[#333333] mx-2" />
+              <button 
+                onClick={() => { window.ipc.toggleFind(); window.ipc.stopFindInPage(); }}
+                class="p-1 opacity-30 hover:opacity-100 hover:bg-[#2b2a33] rounded-md transition-colors"
+                title="Close (Escape)"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </Show>
 
       <Show when={omniboxVisible()}>

@@ -55,7 +55,7 @@ body {
     z-index: -1;
   }
 
-  .floating-palette, .permission-palette {
+  .floating-palette, .permission-palette, .find-palette {
     background-color: var(--palette-bg);
     border: 1px solid var(--palette-border);
     border-top: 1px solid var(--palette-highlight);
@@ -78,6 +78,12 @@ body {
     width: 400px !important;
     min-width: 400px !important;
     max-width: 400px !important;
+  }
+
+  .find-palette {
+    width: 350px !important;
+    min-width: 350px !important;
+    max-width: 350px !important;
   }
 
   .input-container {

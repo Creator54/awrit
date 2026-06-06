@@ -194,8 +194,24 @@ function scrollHalfPageUp({ view }) {
 /** @type {KeyBindingAction} */
 function blurInput({ view }) {
   if (!view) return false;
-  // If an overlay is visible, let ESC close it via normal handler
-  if (view.omniboxVisible || view.findVisible || view.keyHelpVisible) return false;
+  
+  let closedOverlay = false;
+  if (view.omniboxVisible) {
+    view.toggleOmnibox();
+    closedOverlay = true;
+  }
+  if (view.findVisible) {
+    view.toggleFind();
+    view.content.webContents.stopFindInPage('clearSelection');
+    closedOverlay = true;
+  }
+  if (view.keyHelpVisible) {
+    view.toggleKeyHelp();
+    closedOverlay = true;
+  }
+  
+  if (closedOverlay) return true;
+
   // Blur focused element so vim keys resume
   view.content.webContents.executeJavaScript(`
     if (document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement) {
@@ -220,7 +236,7 @@ const keybindings = {
     },
     '<M-]>': forward,
     '<M-[>': back,
-    '<M-f>': find,
+    '<M-/>': find,
     '<M-r>': refresh,
     '<M-S-d>': toggleDarkMode,
 
@@ -260,7 +276,7 @@ const keybindings = {
     '<C-[>': back,
     '<A-left>': back,
     '<A-right>': forward,
-    '<C-f>': find,
+    '<A-/>': find,
     '<C-r>': refresh,
     '<A-d>': toggleDarkMode,
 

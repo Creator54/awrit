@@ -604,7 +604,12 @@ export async function createWindowWithToolbar(
         this.omniboxVisible = !this.omniboxVisible;
 
         if (this.omniboxVisible) {
-        this.findVisible = false;
+        if (this.findVisible) {
+          this.findVisible = false;
+          if (!this.toolbar.webContents.isLoading()) {
+            this.toolbar.webContents.send('toolbar:toggle-find', false);
+          }
+        }
         loadToolbarContent();
         }
 
@@ -641,7 +646,7 @@ export async function createWindowWithToolbar(
 
         const sendSignal = () => {
           if (!this.toolbar.webContents.isLoading()) {
-            this.toolbar.webContents.send('toolbar:toggle-find');
+            this.toolbar.webContents.send('toolbar:toggle-find', this.findVisible);
           }
         };
 
@@ -649,7 +654,6 @@ export async function createWindowWithToolbar(
           this.toolbar.webContents.once('did-finish-load', sendSignal);
         } else {
           sendSignal();
-          setTimeout(sendSignal, 100);
         }
 
         this.toolbar.setIgnoreMouseEvents(!this.findVisible && !this.omniboxVisible && !this.keyHelpVisible);
@@ -671,7 +675,12 @@ export async function createWindowWithToolbar(
         this.keyHelpVisible = !this.keyHelpVisible;
 
         if (this.keyHelpVisible) {
-        this.findVisible = false;
+        if (this.findVisible) {
+          this.findVisible = false;
+          if (!this.toolbar.webContents.isLoading()) {
+            this.toolbar.webContents.send('toolbar:toggle-find', false);
+          }
+        }
         loadToolbarContent();
         const bindings = getAllKeyBindings();
 
