@@ -2,23 +2,138 @@
 
 @import "../../../dist/kitty.css";
 
+/* Base resets - Bulletproof for Offscreen Rendering */
 * {
   box-sizing: border-box;
 }
 
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: transparent;
+  color: #fbfbfe;
+  overflow: hidden;
+}
+
+:root {
+  /* Solid Zen Palette - sampled directly */
+  --palette-bg: #1c1b22;
+  --palette-border: #333333;
+  --palette-highlight: rgba(255, 255, 255, 0.08);
+  --palette-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --palette-radius: 12px;
+  
+  /* Selection Colors */
+  --row-hover-bg: #2b2a33;
+  --row-radius: 8px;
+  
+  /* Text & Muting */
+  --text-primary: #fbfbfe;
+  --text-muted: #8f8f9d;
+  --accent: #0060df;
+}
+
 @layer components {
-  .animate-in {
-    animation-duration: 200ms;
-    animation-fill-mode: forwards;
-    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Rigid Centering & Scroll Capture */
+  .zen-fixed-wrapper {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    justify-content: center;
+    align-items: center; /* Back to dead center vertically */
+    z-index: 1000;
   }
 
-  .fade-in {
-    animation-name: fadeIn;
+  .zen-backdrop {
+    position: fixed;
+    inset: 0;
+    pointer-events: auto;
+    background: transparent;
+    z-index: -1;
   }
 
-  .scale-in {
-    animation-name: scaleIn;
+  .floating-palette {
+    /* Force unyielding width */
+    width: 650px !important;
+    min-width: 650px !important;
+    max-width: 650px !important;
+    
+    background-color: var(--palette-bg);
+    border: 1px solid var(--palette-border);
+    border-top: 1px solid var(--palette-highlight);
+    border-radius: var(--palette-radius);
+    box-shadow: var(--palette-shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+  }
+
+  .input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 48px;
+    width: 100%;
+    flex-shrink: 0;
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .palette-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 400;
+    padding: 0;
+    margin: 0;
+    height: 100%;
+    /* Strip browser-level highlights */
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .suggestions-container {
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    max-height: 400px;
+    overflow-y: scroll; /* Force scroll context */
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    flex-grow: 1;
+  }
+
+  .suggestion-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--row-radius);
+    gap: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.05s ease;
+  }
+
+  .suggestion-item.selected {
+    background-color: var(--row-hover-bg);
+  }
+
+  .suggestion-item:hover:not(.selected) {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 120ms ease-out forwards;
   }
 
   @keyframes fadeIn {
@@ -26,29 +141,23 @@
     to { opacity: 1; }
   }
 
-  @keyframes scaleIn {
-    from { 
-      opacity: 0;
-      transform: scale(0.95);
-    }
-    to { 
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  /* Custom Scrollbar */
-  .custom-scrollbar::-webkit-scrollbar {
+  /* Thin Zen Scrollbar */
+  .suggestions-container::-webkit-scrollbar {
     width: 6px;
   }
-  .custom-scrollbar::-webkit-scrollbar-track {
+  .suggestions-container::-webkit-scrollbar-track {
     background: transparent;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(var(--color-kitty-fg), 0.1);
+  .suggestions-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 10px;
+    border: 1px solid transparent;
+    background-clip: content-box;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(var(--color-kitty-fg), 0.2);
+  .suggestions-container::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+  .suggestions-container::-webkit-scrollbar-thumb:active {
+    background-color: rgba(255, 255, 255, 0.3);
   }
 }
