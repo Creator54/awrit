@@ -1,5 +1,4 @@
-#!/usr/bin/env nix-shell
-#!nix-shell "shell.nix" -i bash
+#!/usr/bin/env bash
 #: Run awrit with all Electron dependencies from nix-shell
 #:
 #: Usage:
@@ -9,6 +8,19 @@
 #:   map ctrl+shift+b launch --location=split --cwd=current ./awrit
 
 cd "$(dirname "$0")"
+
+# Auto-enter nix-shell if available and not already inside one
+if command -v nix-shell >/dev/null 2>&1 && [ -z "$IN_NIX_SHELL" ] && [ -f "shell.nix" ]; then
+  ARGS=()
+  for arg in "$@"; do
+    ARGS+=("$(printf "%q" "$arg")")
+  done
+  exec nix-shell "shell.nix" --run "exec bash \"$0\" ${ARGS[*]}"
+fi
+
+if [ ! -d "node_modules" ] && command -v bun >/dev/null 2>&1; then
+  bun install || true
+fi
 
 # Restore terminal on ANY exit (crash, SIGKILL, etc.)
 # Prevents raw keyboard mode from sticking and breaking all input

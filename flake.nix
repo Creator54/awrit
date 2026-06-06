@@ -31,7 +31,7 @@
 
     # Per-platform dep hashes — update when bun.lock changes
     depHashes = {
-      "x86_64-linux" = "sha256-xHJ+dmEs60pHQlbE0zSARwf47EUqL6g1aAyXF4Y6MPM=";
+      "x86_64-linux" = "sha256-tPvT6lBNhPOJAkJElYTjn63maEPX29pSzLGiOz5m3YI=";
       "aarch64-linux" = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # build once on aarch64 to get hash
     };
 
@@ -57,6 +57,7 @@
         outputHashAlgo = "sha256";
         outputHashMode = "recursive";
         outputHash = depHashes.${system};
+        ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
         SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         __structuredAttrs = true;
         unsafeDiscardReferences.out = true;
@@ -118,12 +119,10 @@
           --replace-quiet '/build/source/node_modules' "$out/lib/awrit/node_modules" \
           --replace-quiet '/build/source/awrit-native-rs' "$out/lib/awrit/awrit-native-rs"
 
-        ELECTRON=$(find ${bunDeps}/node_modules/electron/dist -name electron -type f)
-
         cat > $out/bin/awrit <<EOF
         #!/usr/bin/env bash
         export LD_LIBRARY_PATH="${libPath}\''${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
-        
+
         # Ensure log directory exists
         LOG_DIR="''${XDG_DATA_HOME:-\$HOME/.local/share}/awrit"
         mkdir -p "\$LOG_DIR"
@@ -143,7 +142,7 @@
           esac
         done
         # Redirect stderr to log file to prevent TUI corruption from native logs (Electron, GTK, etc.)
-        exec "$ELECTRON" $out/lib/awrit/dist/index.js --high-dpi-support=1 "\$@" 2> "\$LOG_FILE"
+        exec "${pkgs.electron}/bin/electron" $out/lib/awrit/dist/index.js --high-dpi-support=1 "\$@" 2> "\$LOG_FILE"
         EOF
         chmod +x $out/bin/awrit
       '';

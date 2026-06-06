@@ -1,90 +1,55 @@
-I no longer have time to maintain my hobby projects and with the rising number of security issues, I would advise you to look at a more actively maintained fork.
+# Awrit ![NixOS](https://img.shields.io/badge/-NixOS-5277C3.svg?style=flat-square&logo=nixos&logoColor=white)
 
-If you use macOS you might enjoy using [cmux](https://github.com/manaflow-ai/cmux) as a replacement for awrit.
+> Personal fork of [`chase/awrit`](https://github.com/chase/awrit). See upstream for full documentation.
+>
+> *Note: Force Push Ahead.*
 
----
+## Features & Roadmap
+- [x] Built-in Google Sign-In support (GIS and direct sign-in)
+- [x] 2-finger horizontal swipe for back/forward history navigation
+- [x] Vim-style keyboard bindings for page navigation
+- [x] Site-wise context zoom control (`Alt+-` / `Alt+=` / `Ctrl+0`)
+- [x] Zen-inspired Omnibox with intelligent search suggestions
+- [x] Interactive site permissions overlay via omnibox (camera, mic, geolocation)
+- [x] Multi-window handling support
+- [x] Bidirectional system clipboard interoperability (OSC 52 + bracketed paste)
+- [x] Proper standard XDG storage paths for data and logs (`~/.local/share/awrit`)
+- [x] Find in page functionality (`Alt+/`)
+- [x] Zero-latency page swaps ("Flash Killer")
+- [x] Website click-to-copy and double/triple-click text selection
+- [x] Custom error pages for network failures and crashes
+- [x] Link hover status indicators
+- [x] In-app DevTools toggling (`F12` / `Ctrl+Shift+I`)
+- [x] Chrome DevTools Protocol (CDP) support (`--remote-debugging-port=9222`)
+- [x] Aggressive resource limits (30fps caps, disabled spellchecker)
+- [x] Tear-free synchronized terminal output (2026 mode)
+- [x] High-performance rendering (BGRA->RGBA dirty rects, SIMD pass)
+- [ ] Browser tabs support
+- [ ] Settings page UI
+- [ ] History navigation and cleanup
+- [ ] Cookies and site data management
 
-# Actual Web Rendering in Terminal
+![awrit screenshot](assets/screenshot.jpg)
 
-Or just `awrit`.
+## Install
 
-[awrit-demo.webm](https://github.com/user-attachments/assets/5da3fffc-d781-4b00-9fe3-19ce18d01a7e)
-
-Yep, actual Chromium being rendered in your favorite terminal that supports the [Kitty terminal graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
-
-**`awrit` works best in [Kitty v0.31 or newer](https://github.com/kovidgoyal/kitty/releases)**
-
-## Why?
-
-- Display documentation from [DevDocs](https://devdocs.io)
-- Watch the changes from [Vite](https://vitejs.dev) come to life
-- Tiled layout without a tiling window manager using [Kitty's layouts](https://sw.kovidgoyal.net/kitty/layouts/)
-- Add fancy UI using web technologies, so NeoVim can pretend it is Emacs instead of the other way around
-
-## Usage
-
+**Nix (Recommended):**
 ```bash
-awrit [url]
+# Run instantly without installing
+nix run github:creator54/awrit -- https://github.com/creator54/awrit
 
-# if url is not provided, it will go to the awrit homepage (this is temporary, promise)
-# the URL protocol can be http:, https:, or data:
-# if the URL protocol is not included, https: is used by default
+# Or install to your user profile
+nix profile install github:creator54/awrit
+
+# For local development
+git clone https://github.com/creator54/awrit.git && cd awrit
+nix run .
 ```
 
-For more options look at the help:
-
+**Standard Linux:**
 ```bash
-awrit --help
+git clone https://github.com/creator54/awrit.git
+cd awrit
+./setup.sh
+./awrit
 ```
-
-## Configuration
-
-`awrit` can be configured through `config.js` in the project root. Changes to it will update the config in any running `awrit`.
-
-Currently it only supports custom keybindings and changing the homepage that displays when no URL is provided.
-
-For more details on keybinding syntax and available actions, see the comments in `config.js`.
-
-## Google Services & Login
-
-To use Google services (Gmail, YouTube, Drive, etc.) securely in `awrit`, it is recommended to use the **System Browser OAuth Flow**. This follows Google's security best practices and prevents "Insecure Browser" errors.
-
-1. Create an **OAuth 2.0 Client ID** (type: "Desktop App") in the [Google Cloud Console](https://console.cloud.google.com/).
-2. Add your Client ID to `config.js`:
-   ```javascript
-   const oauth = {
-     clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
-     scopes: ['email', 'profile'],
-     redirectPort: 9223,
-   };
-   ```
-3. When you attempt to log in to Google within `awrit`, it will open your system browser (Chrome/Firefox) to complete the login. Once finished, `awrit` will automatically establish your session and log you in internally.
-
-Using this flow allows `awrit` to identify as a **Genuine Chrome** browser, enabling features like **YouTube 4K** and improved Google Maps performance.
-
-## Contributing
-
-See [Contributing to Awrit](/CONTRIBUTING.md#contributing-to-awrit).
-
-## Development
-
-Assuming you already have `git` installed, your installation of `awrit` will already be a Git repository.
-
-You can update `awrit` to use your fork by changing the origin:
-
-``` bash
-# note: you'll have to change the username some-kind-contributor to your GitHub username
-git remote set-url origin git@github.com:some-kind-contributor/awrit.git
-# also track the upstream electron branch
-git remote add upstream -f -t electron git@github.com:chase/awrit.git
-```
-
-You can make a branch (ex: my-feature-branch) off the latest changes by doing:
-
-```
-git fetch upstream electron
-git checkout upstream/electron
-git switch -c 'my-feature-branch'
-```
-
-Read [Your First Code Contribution](/CONTRIBUTING.md#your-first-code-contribution) for more information on making a PR.
