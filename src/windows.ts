@@ -46,6 +46,27 @@ import { getDisplayScale } from './dpi';
 import { features } from './features';
 import { updateCursor } from './tty/cursor';
 
+// Module-level Maps for multi-window IPC routing
+const findInPageHandlers = new Map<number, (text: string, options?: Electron.FindInPageOptions) => number>();
+const stopFindInPageHandlers = new Map<number, () => void>();
+let globalIpcHandlersRegistered = false;
+
+function ensureGlobalIPCHandlers() {
+  if (globalIpcHandlersRegistered) return;
+  globalIpcHandlersRegistered = true;
+
+  ipcMain.handle('findInPage', (event, text, options) => {
+    const handler = findInPageHandlers.get(event.sender.id);
+    if (!handler) throw new Error('No findInPage handler for this window');
+    return handler(text, options);
+  });
+
+  ipcMain.handle('stopFindInPage', (event) => {
+    const handler = stopFindInPageHandlers.get(event.sender.id);
+    if (!handler) throw new Error('No stopFindInPage handler for this window');
+    return handler();
+  });
+}
 
 export type Actions = {
   back: () => void;
@@ -111,6 +132,29 @@ function padSize(size: WindowDimensions): WindowDimensions {
 }
 
 export const managedViews: WindowView[] = [];
+
+/**
+ * Creates a new window and sets focus to it.
+ */
+export async function createNewWindow(url = 'https://google.com'): Promise<WindowView> {
+  const size = getWindowSize();
+  const view = await createWindowWithToolbar(size, url);
+  return view;
+}
+
+/**
+ * Cycles focus to the next managed window.
+ */
+export function cycleFocus(): boolean {
+  if (managedViews.length <= 1) return false;
+  const current = focusedView.current;
+  const idx = current ? managedViews.indexOf(current) : -1;
+  const next = managedViews[(idx + 1) % managedViews.length];
+  focusedView.previous = current;
+  focusedView.current = next;
+  next.relayout(true);
+  return true;
+}
 
 /**
  * Creates a new window with a transparent architecture.
@@ -819,7 +863,16 @@ function setupToolbarIPC(
     },
   };
 
-  for (const [channel, handler] of Object.entries(handlers)) ipcMain.on(channel, handler);
+  // Wrap handlers to filter by sender so only the matching window's handler acts
+  const wrappedHandlers: Record<string, any> = {};
+  for (const [channel, handler] of Object.entries(handlers)) {
+    wrappedHandlers[channel] = (event: any, ...args: any[]) => {
+      if (event.sender === toolbarContents) {
+        return handler(event, ...args);
+      }
+    };
+    ipcMain.on(channel, wrappedHandlers[channel]);
+  }
 
   let progressInterval: NodeJS.Timeout | null = null;
   let currentProgress = 0;
@@ -874,11 +927,10 @@ function setupToolbarIPC(
   contentContents.on('did-finish-load', updateNavigationState);
   contentContents.on('did-frame-finish-load', updateNavigationState);
 
-  ipcMain.handle('findInPage', (_event, text, options) => {
-    return contentContents.findInPage(text, options);
-  });
-
-  ipcMain.handle('stopFindInPage', (_event) => {
+  // Register per-window handlers in the routing Maps
+  ensureGlobalIPCHandlers();
+  findInPageHandlers.set(toolbarContents.id, (text, options) => contentContents.findInPage(text, options));
+  stopFindInPageHandlers.set(toolbarContents.id, () => {
     contentContents.stopFindInPage('clearSelection');
     view.content.focusOnWebView();
     view.focusedContent = contentContents;
@@ -886,9 +938,10 @@ function setupToolbarIPC(
 
   return () => {
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
-    for (const [channel, handler] of Object.entries(handlers)) ipcMain.removeListener(channel, handler);
-    ipcMain.removeHandler('findInPage');
-    ipcMain.removeHandler('stopFindInPage');
+    for (const [channel, handler] of Object.entries(wrappedHandlers)) ipcMain.removeListener(channel, handler);
+    // Clean up per-window handlers from the routing Maps
+    findInPageHandlers.delete(toolbarContents.id);
+    stopFindInPageHandlers.delete(toolbarContents.id);
     contentContents.off('did-start-loading', onLoadingStarted);
     contentContents.off('did-stop-loading', onLoadingStopped);
     contentContents.off('did-navigate', onDidNavigate);

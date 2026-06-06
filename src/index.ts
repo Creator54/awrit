@@ -26,7 +26,7 @@ import { handleDeepLinkAuth } from './auth';
 import { sessionPromise } from './session';
 
 import { handleInput } from './inputHandler';
-import { createWindowWithToolbar, getWindowSize, type WindowView } from './windows';
+import { createWindowWithToolbar, createNewWindow, cycleFocus, getWindowSize, managedViews, type WindowView } from './windows';
 import { features } from './features';
 import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
@@ -74,6 +74,10 @@ function loadConfig(config: typeof import('../config.js')) {
 
     const helpToggleKey = (config.urlBar as any)?.helpToggleKey || '<A-h>';
     bindings[helpToggleKey] = function toggleKeyHelp({ view }: { view?: WindowView }) { view?.toggleKeyHelp(); };
+
+    // Multi-window keybindings
+    bindings['<C-t>'] = function newWindow() { createNewWindow(); return true; };
+    bindings['<C-Tab>'] = function switchWindow() { return cycleFocus(); };
 
     loadKeyBindings({ keybindings: bindings });
   }
@@ -238,22 +242,28 @@ if (process.defaultApp) {
 
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
+const deepLinkUrl = process.argv.find(arg => arg.startsWith('awrit://'));
 
 if (!gotTheLock) {
-  app.quit();
+  if (deepLinkUrl) {
+    // This is a deep-link invocation from another instance - quit and let primary handle it
+    app.quit();
+  }
+  // else: allow secondary instance to run independently for multi-terminal use
 } else {
   app.on('second-instance', (_event, commandLine) => {
-    // Someone tried to run a second instance, we should focus our window.
     // Also handle deep links from the command line (Linux/Windows)
-    const url = commandLine.pop();
-    if (url?.startsWith('awrit://')) {
+    const url = commandLine.find(arg => arg.startsWith('awrit://'));
+    if (url) {
       app.emit('open-url', new Event('open-url'), url);
     }
   });
 }
 
 app.on('window-all-closed', () => {
-  cleanup(0);
+  if (managedViews.length === 0) {
+    cleanup(0);
+  }
 });
 
 // Disable default menu bar

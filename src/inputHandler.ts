@@ -1,6 +1,6 @@
 import type { KeyEvent as KeyEventOriginal, TermEvent } from 'awrit-native-rs';
 import { handleEvent as handleKeyBinding } from './keybindings';
-import { focusedView, getWindowSize } from './windows';
+import { focusedView, getWindowSize, managedViews } from './windows';
 import { showNavigationOverlay } from './tty/overlay';
 
 const WHEEL_DELTA = 100;
@@ -88,9 +88,8 @@ export function handleInput(evt: TermEvent): boolean {
     }
 
     case 'resize': {
-      const resizeView = focusedView.current;
-      if (resizeView) {
-        resizeView.relayout();
+      for (const v of managedViews) {
+        v.relayout();
       }
       return true;
     }
