@@ -105,6 +105,21 @@ export type WindowView = {
   stopSuppression: (delay?: number) => void;
 } & Actions;
 
+
+export let terminalIsFocused = true;
+export function setTerminalIsFocused(focused: boolean) {
+  terminalIsFocused = focused;
+}
+export function updateFrameRates() {
+  for (const view of managedViews) {
+    try {
+      const isFocused = (view === focusedView.current && terminalIsFocused);
+      view.content.webContents.setFrameRate(isFocused ? 60 : 1);
+      view.toolbar.webContents.setFrameRate(isFocused ? 30 : 1);
+    } catch(e) {}
+  }
+}
+
 export const focusedView: {
   current: WindowView | null;
   previous: WindowView | null;
@@ -155,6 +170,7 @@ export function cycleFocus(): boolean {
   const next = managedViews[(idx + 1) % managedViews.length];
   focusedView.previous = current;
   focusedView.current = next;
+  updateFrameRates();
   next.relayout(true);
   return true;
 }
@@ -421,12 +437,14 @@ export async function createWindowWithToolbar(
 
   toolbar.focusOnWebView = () => {
     focusedView.current = view;
+    updateFrameRates();
     view.focusedContent = toolbar.webContents;
     toolbar.focus();
     toolbar.webContents.focus();
   };
   content.focusOnWebView = () => {
     focusedView.current = view;
+    updateFrameRates();
     view.focusedContent = content.webContents;
     content.focus();
     content.webContents.focus();
@@ -786,6 +804,7 @@ export async function createWindowWithToolbar(
 
   managedViews.push(view);
   focusedView.current = view;
+  updateFrameRates();
 
   const ipcCleanup = setupToolbarIPC(toolbar.webContents, content.webContents, view);
 

@@ -1,6 +1,6 @@
 import type { KeyEvent as KeyEventOriginal, TermEvent } from 'awrit-native-rs';
 import { handleEvent as handleKeyBinding } from './keybindings';
-import { focusedView, getWindowSize, managedViews } from './windows';
+import { focusedView, getWindowSize, managedViews, terminalIsFocused, setTerminalIsFocused, updateFrameRates } from './windows';
 import { showNavigationOverlay } from './tty/overlay';
 
 const WHEEL_DELTA = 100;
@@ -114,6 +114,8 @@ export function handleInput(evt: TermEvent): boolean {
     }
 
     case 'focus':
+      setTerminalIsFocused(evt.focusGained);
+      updateFrameRates();
       if (evt.focusGained) {
         view.focusedContent.focus();
       }
