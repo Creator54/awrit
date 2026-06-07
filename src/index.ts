@@ -69,6 +69,11 @@ function loadConfig(config: typeof import('../config.js')) {
     const toggleKey = config.urlBar?.toggleKey || '<C-l>';
     bindings[toggleKey] = function toggleOmnibox({ view }: { view?: WindowView }) { view?.toggleOmnibox(); };
 
+    bindings['<C-r>'] = function refreshPage({ view }: { view?: WindowView }) { view?.reload(); return true; };
+    if (process.platform === 'darwin') {
+      bindings['<M-r>'] = function refreshPage({ view }: { view?: WindowView }) { view?.reload(); return true; };
+    }
+
     const designToggleKey = (config.urlBar as any)?.designToggleKey || '<A-d>';
     bindings[designToggleKey] = function toggleDesignMode({ view }: { view?: WindowView }) { view?.toggleDesignMode(); };
 

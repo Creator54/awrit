@@ -206,16 +206,21 @@ export function Toolbar() {
     const currentInput = url().trim();
     const committed = lastCommittedUrl().trim();
     
-    // If input is empty or exactly matches current page URL (initial state), show full history
-    if (!currentInput || currentInput === committed) {
+    // If input is empty, show full history
+    if (!currentInput) {
       return history().map(h => ({ ...h, type: 'history' as const }));
     }
 
-    const action = getUrlOrSearch(currentInput);
-    const filteredHistory = history().filter(h => 
-      h.title.toLowerCase().includes(currentInput.toLowerCase()) ||
-      h.url.toLowerCase().includes(currentInput.toLowerCase())
-    );
+    const action = currentInput === committed 
+      ? { url: committed, title: `Reload ${committed}`, isSearch: false } 
+      : getUrlOrSearch(currentInput);
+
+    const filteredHistory = currentInput === committed
+      ? history()
+      : history().filter(h => 
+          h.title.toLowerCase().includes(currentInput.toLowerCase()) ||
+          h.url.toLowerCase().includes(currentInput.toLowerCase())
+        );
 
     const suggestions: Suggestion[] = [{ ...action, type: 'action' }];
     for (const h of filteredHistory) {

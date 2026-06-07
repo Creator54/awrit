@@ -321,7 +321,7 @@ function forward({ view }) {
 
 /** @type {KeyBindingAction} */
 function refresh({ view }) {
-  view.refresh();
+  view.reload();
 }
 
 function find({ view }) {
