@@ -74,7 +74,7 @@ let lastFocused = false;
 const updateFocus = () => {
   const activeEl = document.activeElement;
   const isInput = !!(activeEl && (
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName) || 
+    ['INPUT', 'TEXTAREA', 'SELECT', 'IFRAME', 'CANVAS'].includes(activeEl.tagName) || 
     activeEl.isContentEditable ||
     activeEl.getAttribute('role') === 'textbox'
   ));
