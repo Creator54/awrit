@@ -108,13 +108,15 @@ export function handleInput(evt: TermEvent): boolean {
       if (evt.paste) {
         const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
         const webContents = isToolbarActive ? view.toolbar.webContents : view.content.webContents;
-        webContents.insertText(evt.paste);
+        const { clipboard } = require('electron');
+        clipboard.writeText(evt.paste);
+        webContents.paste();
       }
       return true;
     }
 
     case 'focus':
-      setTerminalIsFocused(evt.focusGained);
+      setTerminalIsFocused(evt.focusGained ?? false);
       updateFrameRates();
       if (evt.focusGained) {
         view.focusedContent.focus();

@@ -477,7 +477,8 @@ function paste({ view }) {
   readFromSystemClipboard().then((text) => {
     if (text && text.length > 0) {
       setImmediate(() => {
-        target.insertText(text);
+        electron.clipboard.writeText(text);
+        target.paste();
       });
     }
   }).catch((err) => {
