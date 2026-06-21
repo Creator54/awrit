@@ -96,3 +96,5 @@ if (document.documentElement) {
   style.innerHTML = 'html { color-scheme: dark !important; }';
   document.documentElement.appendChild(style);
 }
+
+

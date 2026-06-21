@@ -330,6 +330,22 @@ export async function createWindowWithToolbar(
   });
 
   content.webContents.on('did-navigate', () => {
+    // Inject global scrollbar hide rules natively as User Origin to guarantee it beats website Author CSS
+    // This entirely prevents the native scrollbars from flashing and guarantees websites cannot override them.
+    content.webContents.insertCSS(`
+      * { scrollbar-width: thin !important; scrollbar-color: transparent transparent !important; }
+      html { scrollbar-width: none !important; }
+      body { scrollbar-width: none !important; }
+      ::-webkit-scrollbar { width: 4px !important; height: 4px !important; }
+      html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+      ::-webkit-scrollbar-track { background: transparent !important; }
+      ::-webkit-scrollbar-thumb { background-color: transparent !important; border-radius: 2px !important; }
+      ::-webkit-scrollbar-button { display: none !important; }
+      ::-webkit-scrollbar-corner { background: transparent !important; }
+      html.awrit-scrolling * { scrollbar-color: rgba(255,255,255,.20) transparent !important; }
+      html.awrit-scrolling *::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.20) !important; }
+    `, { cssOrigin: 'user' });
+
     if (!options.transparent) {
       // Inject white background as a user stylesheet.
       // This ensures sites without explicit backgrounds are legible,
@@ -350,8 +366,58 @@ export async function createWindowWithToolbar(
   });
 
   content.webContents.on('dom-ready', () => {
+    // Inject custom DOM-based scrollbar for buttery smooth hardware-accelerated transitions on the main window.
+    content.webContents.executeJavaScript(`
+      (function () {
+        if (document.getElementById('awrit-custom-scrollbar')) return;
+        
+        var scrollbar = document.createElement('div');
+        scrollbar.id = 'awrit-custom-scrollbar';
+        Object.assign(scrollbar.style, {
+          position: 'fixed',
+          right: '0',
+          top: '0',
+          width: '4px',
+          backgroundColor: 'rgba(255, 255, 255, 0.4)',
+          borderRadius: '2px',
+          zIndex: '2147483647',
+          pointerEvents: 'none',
+          transition: 'opacity 0.8s ease-out',
+          opacity: '0'
+        });
+        (document.body || document.documentElement).appendChild(scrollbar);
+
+        var t;
+        window.addEventListener('scroll', function () {
+          // Toggle class for nested scrollbars (legacy instant behavior)
+          document.documentElement.classList.add('awrit-scrolling');
+          
+          // Smooth DOM scrollbar for root window
+          var docHeight = document.documentElement.scrollHeight;
+          var winHeight = window.innerHeight;
+          if (docHeight > winHeight) {
+            var heightRatio = winHeight / docHeight;
+            var scrollbarHeight = Math.max(winHeight * heightRatio, 20);
+            var scrollbarTop = (window.scrollY / (docHeight - winHeight)) * (winHeight - scrollbarHeight);
+            
+            scrollbar.style.height = scrollbarHeight + 'px';
+            scrollbar.style.transform = 'translateY(' + scrollbarTop + 'px)';
+            scrollbar.style.transition = 'opacity 0.1s ease-in';
+            scrollbar.style.opacity = '1';
+          }
+          
+          clearTimeout(t);
+          t = setTimeout(function () {
+            document.documentElement.classList.remove('awrit-scrolling');
+            scrollbar.style.transition = 'opacity 0.8s ease-out';
+            scrollbar.style.opacity = '0';
+          }, 1500);
+        }, { capture: true, passive: true });
+      })();
+    `);
+    
     // Site has parsed its HTML, likely has content/loader to show.
-    stopSuppression(100);
+    stopSuppression(1000);
   });
 
   let lastPaintSize: WindowDimensions = padSize(size);
