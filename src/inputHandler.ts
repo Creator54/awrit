@@ -140,9 +140,9 @@ export function handleInput(evt: TermEvent): boolean {
 
       const currentDragButton = button ?? activeMouseButton;
       if (kind === 'mouseMove' || kind === 'mouseDown') {
-        if (currentDragButton === 'left') electronMods.push('leftButtonDown');
-        else if (currentDragButton === 'middle') electronMods.push('middleButtonDown');
-        else if (currentDragButton === 'right') electronMods.push('rightButtonDown');
+        if (currentDragButton === 'left') electronMods.push('leftbuttondown');
+        else if (currentDragButton === 'middle') electronMods.push('middlebuttondown');
+        else if (currentDragButton === 'right') electronMods.push('rightbuttondown');
       }
 
       if (
