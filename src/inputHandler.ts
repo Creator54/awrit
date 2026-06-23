@@ -45,6 +45,31 @@ function isSimpleMouseEvent(kind: unknown): kind is (typeof mouseEventTypes)[num
   return mouseEventTypes.includes(kind as (typeof mouseEventTypes)[number]);
 }
 
+let lastUnlockTime = 0;
+function ensureInputUnlocked(webContents: any) {
+  const now = Date.now();
+  if (now - lastUnlockTime < 2000) return;
+  lastUnlockTime = now;
+  
+  try {
+    const dbg = webContents.debugger;
+    const wasAttached = dbg.isAttached();
+    if (!wasAttached) dbg.attach('1.3');
+
+    Promise.all([
+      dbg.sendCommand('Input.setIgnoreInputEvents', { ignore: false }).catch(() => {}),
+      dbg.sendCommand('Emulation.setEmitTouchEventsForMouse', { enabled: false, configuration: 'mobile' }).catch(() => {}),
+      dbg.sendCommand('Debugger.resume').catch(() => {})
+    ]).finally(() => {
+      if (!wasAttached) {
+        try { dbg.detach(); } catch (e) {}
+      }
+    });
+  } catch (e) {
+    // Ignore errors
+  }
+}
+
 export function handleInput(evt: TermEvent): boolean {
   const view = focusedView.current;
   if (!view) {
@@ -59,6 +84,8 @@ export function handleInput(evt: TermEvent): boolean {
 
       const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
       const webContents = isToolbarActive ? view.toolbar.webContents : view.focusedContent;
+      
+      ensureInputUnlocked(webContents);
       
       // OPTIMIZED FOCUS: Only focus if not already focused
       if (view.focusedContent !== webContents) {
@@ -125,6 +152,7 @@ export function handleInput(evt: TermEvent): boolean {
       return true;
 
     case 'mouse': {
+      ensureInputUnlocked(view.focusedContent);
       const mouseEvent = evt.mouseEvent;
       if (!mouseEvent) return false;
       const { kind, button, x, y, modifiers } = mouseEvent;
