@@ -25,6 +25,7 @@ let lastClickY = -1;
 let lastClickButton: string | undefined;
 let lastClickTarget: any = null;
 let currentClickCount = 0;
+let activeMouseButton: string | undefined;
 
 const mouseEventTypes = ['mouseDown', 'mouseUp', 'mouseMove'] as const;
 
@@ -128,6 +129,21 @@ export function handleInput(evt: TermEvent): boolean {
       if (!mouseEvent) return false;
       const { kind, button, x, y, modifiers } = mouseEvent;
       const electronMods = normalizeModifiers(modifiers);
+
+      if (kind === 'mouseDown') {
+        activeMouseButton = button ?? undefined;
+      } else if (kind === 'mouseUp') {
+        if (button === activeMouseButton || !button) {
+          activeMouseButton = undefined;
+        }
+      }
+
+      const currentDragButton = button ?? activeMouseButton;
+      if (kind === 'mouseMove' || kind === 'mouseDown') {
+        if (currentDragButton === 'left') electronMods.push('leftButtonDown');
+        else if (currentDragButton === 'middle') electronMods.push('middleButtonDown');
+        else if (currentDragButton === 'right') electronMods.push('rightButtonDown');
+      }
 
       if (
         (kind === 'mouseUp' || kind === 'mouseDown') &&
