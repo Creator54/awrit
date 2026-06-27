@@ -31,6 +31,7 @@ import * as out from './tty/output';
 import { getWindowSize as rawGetWindowSize, ShmGraphicBuffer, type WindowSize } from 'awrit-native-rs';
 import { getAllKeyBindings } from './keybindings';
 import { loadZoomState, getZoomFactor, setZoomFactor, saveZoomState } from './zoom-state';
+import { setupDragAndDrop } from './dragAndDropSetup';
 
 export function getWindowSize() {
   try {
@@ -267,6 +268,9 @@ export async function createWindowWithToolbar(
   content.isSuppressingPaint = false;
   // @ts-expect-error
   content.paintCount = 0;
+
+  setupDragAndDrop(toolbar.webContents);
+  setupDragAndDrop(content.webContents);
 
   const destructors: Array<() => void> = [];
   const refreshers: Array<() => void> = [];

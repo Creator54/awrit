@@ -22,6 +22,70 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
               window.postMessage({ type: 'awrit:copy', text: text }, '*');
             }
           }, true);
+
+          // 3. Polyfill visual drag image for OSR
+          let dragClone = null;
+          let dragOffsetX = 0;
+          let dragOffsetY = 0;
+          
+          document.addEventListener('dragstart', (e) => {
+            if (dragClone) { dragClone.remove(); dragClone = null; }
+            const target = e.target.nodeType === 3 ? e.target.parentElement : e.target;
+            if (target && target.cloneNode && target.getBoundingClientRect) {
+              const rect = target.getBoundingClientRect();
+              dragOffsetX = e.clientX - rect.left;
+              dragOffsetY = e.clientY - rect.top;
+              
+              dragClone = target.cloneNode(true);
+              dragClone.style.position = 'fixed';
+              dragClone.style.top = (e.clientY - dragOffsetY) + 'px';
+              dragClone.style.left = (e.clientX - dragOffsetX) + 'px';
+              dragClone.style.width = rect.width + 'px';
+              dragClone.style.height = rect.height + 'px';
+              dragClone.style.margin = '0';
+              dragClone.style.boxSizing = 'border-box';
+              dragClone.style.opacity = '0.9';
+              dragClone.style.pointerEvents = 'none';
+              dragClone.style.zIndex = '2147483647';
+              dragClone.style.boxShadow = '0 10px 20px rgba(0,0,0,0.5)';
+              
+              const compBg = window.getComputedStyle(target).backgroundColor;
+              if (compBg === 'rgba(0, 0, 0, 0)' || compBg === 'transparent') {
+                dragClone.style.backgroundColor = '#222';
+                dragClone.style.borderRadius = '8px';
+                dragClone.style.padding = '4px';
+              }
+              
+              // Prevent inherited transforms or transition animations from breaking the fixed position
+              dragClone.style.transform = 'none';
+              dragClone.style.transition = 'none';
+              dragClone.style.animation = 'none';
+              
+              document.body.appendChild(dragClone);
+            }
+          }, true);
+          
+          document.addEventListener('dragover', (e) => {
+            if (dragClone) {
+              dragClone.style.top = (e.clientY - dragOffsetY) + 'px';
+              dragClone.style.left = (e.clientX - dragOffsetX) + 'px';
+            }
+          }, true);
+          
+          document.addEventListener('dragend', (e) => {
+            if (dragClone) {
+              dragClone.remove();
+              dragClone = null;
+            }
+          }, true);
+          
+          document.addEventListener('drop', (e) => {
+            if (dragClone) {
+              dragClone.remove();
+              dragClone = null;
+            }
+          }, true);
+
         })();
       `
     }]).catch(e => {

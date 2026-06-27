@@ -168,9 +168,9 @@ export function handleInput(evt: TermEvent): boolean {
 
       const currentDragButton = button ?? activeMouseButton;
       if (kind === 'mouseMove' || kind === 'mouseDown') {
-        if (currentDragButton === 'left') electronMods.push('leftbuttondown');
-        else if (currentDragButton === 'middle') electronMods.push('middlebuttondown');
-        else if (currentDragButton === 'right') electronMods.push('rightbuttondown');
+        if (currentDragButton === 'left') electronMods.push('leftButtonDown');
+        else if (currentDragButton === 'middle') electronMods.push('middleButtonDown');
+        else if (currentDragButton === 'right') electronMods.push('rightButtonDown');
       }
 
       if (
@@ -309,7 +309,30 @@ export function handleInput(evt: TermEvent): boolean {
       }
 
       const electronButton =
-        button === 'fourth' || button === 'fifth' || button == null ? undefined : button;
+        currentDragButton === 'fourth' || currentDragButton === 'fifth' || currentDragButton == null ? undefined : currentDragButton;
+
+      // @ts-expect-error
+      targetContents.lastMousePos = { x: adjustedX, y: adjustedY };
+
+      // @ts-expect-error
+      const currentDragData = targetContents.currentDragData;
+      if (currentDragData) {
+        if (kind === 'mouseMove' && !activeMouseButton) {
+          // Ghost drag caused by dragIntercepted firing after mouseUp
+          // @ts-expect-error
+          targetContents.currentDragData = null;
+        } else if (kind === 'mouseMove') {
+          const zoom = targetContents.getZoomFactor();
+          targetContents.debugger.sendCommand('Input.dispatchDragEvent', { type: 'dragOver', x: adjustedX / zoom, y: adjustedY / zoom, data: currentDragData }).catch(() => {});
+          return true;
+        } else if (kind === 'mouseUp') {
+          const zoom = targetContents.getZoomFactor();
+          targetContents.debugger.sendCommand('Input.dispatchDragEvent', { type: 'drop', x: adjustedX / zoom, y: adjustedY / zoom, data: currentDragData }).catch(() => {});
+          // @ts-expect-error
+          targetContents.currentDragData = null;
+          return true;
+        }
+      }
 
       targetContents.sendInputEvent({
         type: kind,
