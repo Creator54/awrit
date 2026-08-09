@@ -47,7 +47,11 @@ export interface InitialFrame {
   free: () => void;
 }
 
-export function paintInitialFrame(buffer: ShmGraphicBuffer, size: Size, options?: { z?: number }): InitialFrame {
+export function paintInitialFrame(
+  buffer: ShmGraphicBuffer,
+  size: Size,
+  options?: { z?: number },
+): InitialFrame {
   const id = imageId();
   const zStr = options?.z !== undefined ? `,z=${options.z}` : '';
   // paint and transfer first frame
@@ -112,6 +116,12 @@ export interface PaintedImage {
   buffer: ShmGraphicBuffer;
   free: () => void;
   replace: (buffer: Buffer) => void;
+  replacePlacement: (
+    buffer: ShmGraphicBuffer,
+    size: Size,
+    position: { x: { cell: number; px: number }; y: { cell: number; px: number } },
+    options?: { z?: number },
+  ) => PaintedImage;
 }
 
 export function paintImage(
@@ -131,6 +141,10 @@ export function paintImage(
     size,
     buffer,
     free: () => freeImage(id),
+    replacePlacement: (nextBuffer, nextSize, nextPosition, nextOptions) => {
+      freeImage(id);
+      return paintImage(nextBuffer, nextSize, nextPosition, nextOptions);
+    },
     replace: (buffer_) => {
       buffer.write(buffer_, size.width);
       // freeImage(id);

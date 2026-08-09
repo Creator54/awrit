@@ -1,4 +1,3 @@
-import { console_ } from '../console';
 import { OSC } from './escapeCodes';
 import { write } from './output';
 
