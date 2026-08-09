@@ -12,7 +12,12 @@ export const possibleOptions = {
   rebuild: { short: 'r', description: 'Rebuild the toolbar' },
   design: { short: 'D', description: 'Enable design-to-edit mode' },
 
-  'window-size': { short: 'w', description: 'Window size as WIDTHxHEIGHT', string: true, arg: 'WIDTHxHEIGHT' },
+  'window-size': {
+    short: 'w',
+    description: 'Window size as WIDTHxHEIGHT',
+    string: true,
+    arg: 'WIDTHxHEIGHT',
+  },
 } as const;
 
 export type Option = keyof typeof possibleOptions;

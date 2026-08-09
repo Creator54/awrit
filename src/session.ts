@@ -12,8 +12,8 @@ export function loadSessionConfig(config: { profile?: string | null }) {
 }
 
 /**
- * awrit uses a clean, transparent session. 
- * Sites can detect awrit via window.awrit and use the Secure Auth Bridge 
+ * awrit uses a clean, transparent session.
+ * Sites can detect awrit via window.awrit and use the Secure Auth Bridge
  * to handle authentication in the system browser.
  */
 const pendingPermissions = new Map<number, (allow: boolean) => void>();
@@ -26,7 +26,10 @@ function notifyPermissionsChanged(origin: string) {
   for (const view of managedViews) {
     try {
       if (new URL(view.content.webContents.getURL()).origin === origin) {
-        view.toolbar.webContents.send('awrit:site-permissions-changed', sitePermissions.get(origin) || {});
+        view.toolbar.webContents.send(
+          'awrit:site-permissions-changed',
+          sitePermissions.get(origin) || {},
+        );
       }
     } catch {}
   }
@@ -66,14 +69,16 @@ ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission
   if (cb) {
     cb(allowed);
     pendingPermissions.delete(id);
-    
+
     // Save to persistent map
     try {
       const origin = new URL(url).origin;
       if (!sitePermissions.has(origin)) sitePermissions.set(origin, {});
       if (allowed && permission === 'media' && mediaTypes) {
+        // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
         sitePermissions.get(origin)![permission] = mediaTypes.join(',');
       } else {
+        // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
         sitePermissions.get(origin)![permission] = allowed;
       }
       notifyPermissionsChanged(origin);
@@ -82,7 +87,9 @@ ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission
   const { managedViews } = require('./windows');
   const view = managedViews.find((v: any) => v.toolbar.webContents === event.sender);
   if (view) {
-    view.toolbar.setIgnoreMouseEvents(!view.omniboxVisible && !view.keyHelpVisible && !view.findVisible);
+    view.toolbar.setIgnoreMouseEvents(
+      !view.omniboxVisible && !view.keyHelpVisible && !view.findVisible,
+    );
     if (view.omniboxVisible || view.findVisible || view.keyHelpVisible) {
       view.toolbar.focusOnWebView();
     } else {
@@ -97,7 +104,9 @@ export const sessionPromise = new Promise<Session>((resolve) => {
 
     if (sessionConfig.profile) {
       const profilePath = path.resolve(sessionConfig.profile);
-      const pathHash = Math.abs(profilePath.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100000);
+      const pathHash = Math.abs(
+        profilePath.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100000,
+      );
       const partitionName = `persist:awrit-profile-${pathHash}`;
       session = ElectronSession.fromPartition(partitionName);
     } else {
@@ -116,12 +125,12 @@ export const sessionPromise = new Promise<Session>((resolve) => {
     session.setSpellCheckerEnabled(false);
 
     // Auto-allow media permissions for offscreen rendering
-    session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
       const autoAllow = ['fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
       if (autoAllow.includes(permission)) {
         return true;
       }
-      
+
       try {
         const origin = new URL(requestingOrigin).origin;
         const perms = sitePermissions.get(origin);
@@ -131,12 +140,17 @@ export const sessionPromise = new Promise<Session>((resolve) => {
           return !!perms[permission];
         }
       } catch {}
-      
+
       return false;
     });
 
     session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-      const autoAllow = ['mediaDevice', 'fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
+      const autoAllow = [
+        'mediaDevice',
+        'fullscreen',
+        'clipboard-read',
+        'clipboard-sanitized-write',
+      ];
       const promptPermissions = ['media', 'notifications', 'geolocation'];
 
       if (autoAllow.includes(permission)) {
@@ -161,7 +175,7 @@ export const sessionPromise = new Promise<Session>((resolve) => {
             id,
             permission,
             url: details.requestingUrl,
-            mediaTypes: (details as any).mediaTypes
+            mediaTypes: (details as any).mediaTypes,
           });
           view.toolbar.setIgnoreMouseEvents(false);
           view.toolbar.focusOnWebView(); // <-- Crucial: route terminal events to toolbar
@@ -177,7 +191,7 @@ export const sessionPromise = new Promise<Session>((resolve) => {
     // standard header handling
     session.webRequest.onBeforeSendHeaders((details, callback) => {
       const headers = details.requestHeaders;
-      
+
       // Force dark mode client hint
       headers['Sec-CH-Prefers-Color-Scheme'] = 'dark';
 
@@ -191,4 +205,3 @@ export const sessionPromise = new Promise<Session>((resolve) => {
     resolve(session);
   });
 });
-

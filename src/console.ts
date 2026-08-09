@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { getLogPath } from './paths';
 
 const LOG_FILE = getLogPath();
@@ -16,10 +15,10 @@ function getLogStream() {
 export const console_ = {
   ...console,
   error: (...args: unknown[]) => {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    const msg = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] ${msg}\n`;
-    
+
     // Write to file
     try {
       getLogStream().write(line);

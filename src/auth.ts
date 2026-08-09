@@ -38,7 +38,7 @@ export class OAuthManager {
    * Starts the OAuth flow by opening the system browser.
    * Returns a promise that resolves with the access token.
    */
-  public async authenticate(): Promise<{ access_token: string, refresh_token?: string }> {
+  public async authenticate(): Promise<{ access_token: string; refresh_token?: string }> {
     return new Promise((resolve, reject) => {
       const AUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -53,7 +53,9 @@ export class OAuthManager {
       };
 
       const timeout = setTimeout(() => {
-        finish(new Error('Authentication timed out. The login was not completed within 2 minutes.'));
+        finish(
+          new Error('Authentication timed out. The login was not completed within 2 minutes.'),
+        );
       }, AUTH_TIMEOUT_MS);
 
       this.state = crypto.randomBytes(32).toString('hex');
@@ -65,7 +67,7 @@ export class OAuthManager {
 
       this.server = http.createServer(async (req, res) => {
         const reqUrl = url.parse(req.url || '', true);
-        
+
         if (reqUrl.pathname === '/callback') {
           const code = reqUrl.query.code as string;
           const returnedState = reqUrl.query.state as string;
@@ -81,7 +83,7 @@ export class OAuthManager {
           if (code) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<h1>Success!</h1><p>Authentication complete. You can close this window.</p>');
-            
+
             try {
               const tokens = await this.exchangeCodeForTokens(code);
               finish(null, tokens);
@@ -199,7 +201,9 @@ export class OAuthManager {
         const refreshed = await this.refreshToken(tokens.refresh_token);
         return refreshed.access_token;
       } catch (_err) {
-        console_.error(`Token refresh failed [${this.provider.name}], returning last known access token`);
+        console_.error(
+          `Token refresh failed [${this.provider.name}], returning last known access token`,
+        );
         return tokens.access_token;
       }
     }
@@ -210,7 +214,7 @@ export class OAuthManager {
   private buildAuthUrl(codeChallenge: string): string {
     const redirectUri = `http://127.0.0.1:${this.currentPort}/callback`;
     const url = new URL(this.provider.authorizeUrl);
-    
+
     url.searchParams.set('client_id', this.provider.clientId);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
@@ -218,13 +222,13 @@ export class OAuthManager {
     url.searchParams.set('state', this.state);
     url.searchParams.set('code_challenge', codeChallenge);
     url.searchParams.set('code_challenge_method', 'S256');
-    
+
     // Provider specific extras
     if (this.provider.name === 'google') {
       url.searchParams.set('access_type', 'offline');
       url.searchParams.set('prompt', 'consent');
     }
-    
+
     return url.toString();
   }
 
@@ -235,7 +239,7 @@ export class OAuthManager {
     if (this.provider.establishSession) {
       return this.provider.establishSession(session, accessToken);
     }
-    
+
     // Default: no session establishment logic
     console_.log(`No session establishment logic defined for provider: ${this.provider.name}`);
   }
@@ -255,7 +259,7 @@ const providers: AuthProvider[] = [];
 
 export function registerAuthProvider(provider: AuthProvider) {
   // If provider with same name already exists, replace it
-  const index = providers.findIndex(p => p.name === provider.name);
+  const index = providers.findIndex((p) => p.name === provider.name);
   if (index !== -1) {
     providers[index] = provider;
   } else {
@@ -268,15 +272,16 @@ export function getProviderForUrl(urlStr: string): AuthProvider | null {
     const url = new URL(urlStr);
     const hostname = url.hostname;
     for (const provider of providers) {
-      if (provider.domains.some(d => hostname === d || hostname.endsWith('.' + d))) {
-        // For Google, only trigger on actual login entry points to avoid 
+      if (provider.domains.some((d) => hostname === d || hostname.endsWith('.' + d))) {
+        // For Google, only trigger on actual login entry points to avoid
         // redirecting every search/document visit.
         if (provider.name === 'google') {
-          if (hostname === 'accounts.google.com' && (
-            url.pathname.startsWith('/o/oauth2') ||
-            url.pathname.startsWith('/ServiceLogin') ||
-            url.pathname.includes('/signin/')
-          )) {
+          if (
+            hostname === 'accounts.google.com' &&
+            (url.pathname.startsWith('/o/oauth2') ||
+              url.pathname.startsWith('/ServiceLogin') ||
+              url.pathname.includes('/signin/'))
+          ) {
             return provider;
           }
           return null;
@@ -306,20 +311,20 @@ export async function handleDeepLinkAuth(urlStr: string, session: Session): Prom
 
     const providerName = parsed.searchParams.get('provider');
     const accessToken = parsed.searchParams.get('token');
-    
+
     if (!providerName || !accessToken) {
       console_.error('[DeepLinkAuth] Missing provider or token in URL');
       return;
     }
 
-    const provider = providers.find(p => p.name === providerName);
+    const provider = providers.find((p) => p.name === providerName);
     if (!provider) {
       console_.error(`[DeepLinkAuth] Unknown provider: ${providerName}`);
       return;
     }
 
     console_.log(`[DeepLinkAuth] Received callback for ${providerName}`);
-    
+
     // Save tokens if we have them
     const tokens = {
       access_token: accessToken,

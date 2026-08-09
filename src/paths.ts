@@ -22,13 +22,13 @@ export function getAppDataPath() {
   }
 
   const p = path.join(appData, 'awrit');
-  
+
   // Ensure the directory exists
   try {
     if (!fs.existsSync(p)) {
       fs.mkdirSync(p, { recursive: true });
     }
-  } catch (err) {
+  } catch (_err) {
     // Fallback to current directory if we can't create the app data path
     // (unlikely but safe for a CLI tool)
     return process.cwd();

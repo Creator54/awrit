@@ -25,6 +25,8 @@ export const extensionsPromise: Promise<ElectronChromeExtensions | null> = hasEx
 
 export const installedExtensionsPromise: Promise<PromiseSettledResult<any>[]> = hasExtensions
   ? sessionPromise.then((session) =>
-      Promise.allSettled(CHROME_WEB_STORE_EXTENSIONS.map((id) => installExtension(id, { session }))),
+      Promise.allSettled(
+        CHROME_WEB_STORE_EXTENSIONS.map((id) => installExtension(id, { session })),
+      ),
     )
   : Promise.resolve([]);

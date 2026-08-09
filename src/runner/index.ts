@@ -3,6 +3,7 @@ import { $, type Subprocess } from 'bun';
 import electronPath from 'electron';
 import { resolve, join } from 'node:path';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { colorsToTailwind, queryColors } from './kittyColors';
 import { server } from './devServer';
 import { getDisplayScale } from '../dpi';
@@ -50,7 +51,12 @@ await $`mkdir -p ${root}/dist`.nothrow().quiet();
 
 {
   const { success } = await Bun.build({
-    entrypoints: [join(root, 'src/index.ts'), join(root, 'src/preload.js'), join(root, 'src/content-preload.js'), join(root, 'src/popup-preload.js')],
+    entrypoints: [
+      join(root, 'src/index.ts'),
+      join(root, 'src/preload.js'),
+      join(root, 'src/content-preload.js'),
+      join(root, 'src/popup-preload.js'),
+    ],
     outdir: join(root, 'dist'),
     root: join(root, 'src'),
     target: 'node',
@@ -65,10 +71,37 @@ await $`mkdir -p ${root}/dist`.nothrow().quiet();
   }
 }
 
-const version = require(join(root, 'package.json')).version;
+const toolbarInputs = [
+  join(root, 'package.json'),
+  join(root, 'bun.lock'),
+  join(root, 'src/runner/package.json'),
+  join(root, 'src/runner/kittyColors.ts'),
+  join(root, 'src/runner/ports.ts'),
+  join(root, 'src/runner/vite.config.ts'),
+  join(root, 'src/debounce.ts'),
+  join(root, 'src/toolbar/index.html'),
+  join(root, 'src/toolbar/tsconfig.json'),
+];
+for await (const file of new Bun.Glob('**/*').scan({
+  cwd: join(root, 'src/toolbar/src'),
+  onlyFiles: true,
+})) {
+  toolbarInputs.push(join(root, 'src/toolbar/src', file));
+}
+
+const hash = createHash('sha256');
+for (const file of toolbarInputs.sort()) {
+  hash.update(file.slice(root.length));
+  hash.update(Buffer.from(await Bun.file(file).arrayBuffer()));
+}
+const toolbarVersion = `${require(join(root, 'package.json')).version}:${hash.digest('hex')}`;
 const distVersion = Bun.file(join(root, 'dist/version'));
 
-if (!(await distVersion.exists()) || (await distVersion.text()) !== version || options.rebuild) {
+if (
+  options.rebuild ||
+  !(await distVersion.exists()) ||
+  (await distVersion.text()) !== toolbarVersion
+) {
   console.error('building toolbar');
   let didQueryColors = false;
   for (let tries = 0; !didQueryColors && tries < 3; tries++) {
@@ -100,7 +133,7 @@ if (!(await distVersion.exists()) || (await distVersion.text()) !== version || o
     process.exit(1);
   }
 
-  distVersion.write(version);
+  await distVersion.write(toolbarVersion);
 }
 
 const children: [string, Subprocess][] = [];
@@ -140,7 +173,7 @@ children.push([
     {
       stdio: ['inherit', 'inherit', logFd],
       serialization: 'json',
-      ipc(message, subprocess) {
+      ipc(_message, _subprocess) {
         // TODO: do cool stuff with IPC between bun and the electron process
       },
       windowsHide: true,

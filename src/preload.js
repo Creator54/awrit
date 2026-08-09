@@ -22,9 +22,13 @@ contextBridge.exposeInMainWorld('ipc', {
   onUpdateTargetUrl: (callback) => ipcRenderer.on('content:update-target-url', (_event, url) => callback(url)),
   onNavigationStateChanged: (callback) =>
     ipcRenderer.on('content:navigation-state-changed', (_event, state) => callback(state)),
+  onZoomChanged: (callback) => ipcRenderer.on('content:zoom-changed', (_event, factor) => callback(factor)),
   onToggleFind: (callback) => ipcRenderer.on('toolbar:toggle-find', (_event, visible) => callback(visible)),
-  onToggleUrlBar: (callback) => ipcRenderer.on('toolbar:toggle-url-bar', () => callback()),
-  onSetUrlBarVisible: (callback) => ipcRenderer.on('omnibox:set-visible', (_event, visible) => callback(visible)),
+  onSetUrlBarVisible: (callback) =>
+    ipcRenderer.on('omnibox:set-visible', (_event, visible) => {
+      callback(visible);
+      requestAnimationFrame(() => ipcRenderer.send('toolbar:visibility-applied'));
+    }),
   onDesignModeChanged: (callback) => ipcRenderer.on('awrit:design-mode-changed', (_event, active) => callback(active)),
   onInputFocusChanged: (callback) => ipcRenderer.on('awrit:input-focus-changed', (_event, focused) => callback(focused)),
   onSetKeyHelpVisible: (callback) => ipcRenderer.on('awrit:set-key-help-visible', (_event, data) => callback(data)),
@@ -34,6 +38,8 @@ contextBridge.exposeInMainWorld('ipc', {
   toggleUrlBar: () => ipcRenderer.send('toolbar:toggle-url-bar'),
   toggleKeyHelp: () => ipcRenderer.send('toolbar:toggle-key-help'),
   toggleFind: () => ipcRenderer.send('toolbar:toggle-find'),
+  openInNewWindow: (url) => ipcRenderer.send('toolbar:open-in-new-window', url),
+  setZoom: (factor) => ipcRenderer.send('toolbar:set-zoom', factor),
   
   // Permission handling
   onPermissionRequest: (callback) => ipcRenderer.on('toolbar:permission-request', (_event, req) => callback(req)),
@@ -41,4 +47,5 @@ contextBridge.exposeInMainWorld('ipc', {
   getSitePermissions: (url) => ipcRenderer.invoke('awrit:get-site-permissions', url),
   revokeSitePermission: (url, permission) => ipcRenderer.send('awrit:revoke-site-permission', url, permission),
   onSitePermissionsChanged: (callback) => ipcRenderer.on('awrit:site-permissions-changed', (_event, perms) => callback(perms)),
+  onScrollSuggestions: (callback) => ipcRenderer.on('toolbar:scroll-suggestions', (_event, deltaY) => callback(deltaY)),
 });
