@@ -122,6 +122,9 @@ try {
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
+    goBack: () => {
+      ipcRenderer.send('awrit:go-back');
+    },
   });
 
   ipcRenderer.on('awrit:set-design-mode', (_event, active) => {
@@ -160,5 +163,4 @@ if (document.documentElement) {
   style.innerHTML = 'html { color-scheme: dark !important; }';
   document.documentElement.appendChild(style);
 }
-
 

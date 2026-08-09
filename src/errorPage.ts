@@ -110,7 +110,7 @@ const ERROR_MESSAGES: Record<number, { title: string; tips: string[] }> = {
   [-200]: {
     title: 'Certificate Error',
     tips: [
-      'The site\'s security certificate is not trusted',
+      "The site's security certificate is not trusted",
       'The certificate may have expired',
       'Proceed with caution',
     ],
@@ -135,11 +135,7 @@ const ERROR_MESSAGES: Record<number, { title: string; tips: string[] }> = {
   },
   [-324]: {
     title: 'Empty Response',
-    tips: [
-      'The server returned no data',
-      'The server may be misconfigured',
-      'Try again later',
-    ],
+    tips: ['The server returned no data', 'The server may be misconfigured', 'Try again later'],
   },
 };
 
@@ -156,7 +152,11 @@ export function shouldIgnoreError(errorCode: number): boolean {
 /**
  * Generates an HTML error page string for the given error.
  */
-export function generateErrorPage({ errorCode, errorDescription, failedUrl }: ErrorPageOptions): string {
+export function generateErrorPage({
+  errorCode,
+  errorDescription,
+  failedUrl,
+}: ErrorPageOptions): string {
   const info = ERROR_MESSAGES[errorCode] || {
     title: 'Page Load Failed',
     tips: ['An unexpected error occurred', 'Try reloading the page'],
@@ -169,9 +169,7 @@ export function generateErrorPage({ errorCode, errorDescription, failedUrl }: Er
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  const tipsHtml = info.tips
-    .map((tip) => `<li>${tip}</li>`)
-    .join('\n            ');
+  const tipsHtml = info.tips.map((tip) => `<li>${tip}</li>`).join('\n            ');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -346,12 +344,38 @@ export function generateErrorPage({ errorCode, errorDescription, failedUrl }: Er
     </div>
 
     <div class="actions">
-      <button class="btn" onclick="history.back()">Go Back</button>
-      <button class="btn btn-primary" onclick="location.reload()">Retry</button>
+      <button class="btn" id="awrit-back">Go Back</button>
+      <button class="btn" id="awrit-external">Open in Browser</button>
+      <button class="btn btn-primary" id="awrit-retry">Retry</button>
     </div>
 
     <div class="error-code">${errorDescription} (${errorCode})</div>
   </div>
+  <script>
+    (function () {
+      var url = ${JSON.stringify(failedUrl)};
+      function goBack() {
+        if (window.awrit && window.awrit.goBack) window.awrit.goBack();
+      }
+      function openExternal() {
+        if (window.awrit && window.awrit.openExternal) window.awrit.openExternal(url);
+      }
+      function retry() {
+        location.href = url;
+      }
+      var back = document.getElementById('awrit-back');
+      var ext = document.getElementById('awrit-external');
+      var retryButton = document.getElementById('awrit-retry');
+      if (back) back.onclick = goBack;
+      if (ext) ext.onclick = openExternal;
+      if (retryButton) retryButton.onclick = retry;
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); goBack(); }
+      });
+      // Auto-focus so Enter/Esc work without a click
+      if (back) back.focus();
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -359,7 +383,11 @@ export function generateErrorPage({ errorCode, errorDescription, failedUrl }: Er
 /**
  * Generates an HTML page for renderer crashes.
  */
-export function generateCrashPage(details: { reason: string; exitCode: number }): string {
+export function generateCrashPage(details: {
+  reason: string;
+  exitCode: number;
+  failedUrl: string;
+}): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -406,6 +434,12 @@ export function generateCrashPage(details: { reason: string; exitCode: number })
       margin-bottom: 28px;
       line-height: 1.6;
     }
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
     .btn {
       padding: 9px 20px;
       border-radius: 8px;
@@ -434,9 +468,37 @@ export function generateCrashPage(details: { reason: string; exitCode: number })
     <div class="icon">💥</div>
     <h1>Page Crashed</h1>
     <p>Something went wrong and this page couldn't continue running. This is usually temporary.</p>
-    <button class="btn" onclick="location.reload()">Reload Page</button>
+    <div class="actions">
+      <button class="btn" id="awrit-back">Go Back</button>
+      <button class="btn" id="awrit-external">Open in Browser</button>
+      <button class="btn btn-primary" id="awrit-retry">Reload Page</button>
+    </div>
     <div class="error-code">${details.reason} (exit ${details.exitCode})</div>
   </div>
+  <script>
+    (function () {
+      var url = ${JSON.stringify(details.failedUrl)};
+      function goBack() {
+        if (window.awrit && window.awrit.goBack) window.awrit.goBack();
+      }
+      function openExternal() {
+        if (window.awrit && window.awrit.openExternal) window.awrit.openExternal(url);
+      }
+      function retry() {
+        location.href = url;
+      }
+      var back = document.getElementById('awrit-back');
+      var ext = document.getElementById('awrit-external');
+      var retryButton = document.getElementById('awrit-retry');
+      if (back) back.onclick = goBack;
+      if (ext) ext.onclick = openExternal;
+      if (retryButton) retryButton.onclick = retry;
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); goBack(); }
+      });
+      if (back) back.focus();
+    })();
+  </script>
 </body>
 </html>`;
 }
