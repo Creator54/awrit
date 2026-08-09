@@ -1,6 +1,6 @@
-import type { KeyEvent as KeyEventOriginal, TermEvent } from 'awrit-native-rs';
+import type { TermEvent } from 'awrit-native-rs';
 import { handleEvent as handleKeyBinding } from './keybindings';
-import { focusedView, getWindowSize, managedViews, terminalIsFocused, setTerminalIsFocused, updateFrameRates } from './windows';
+import { focusedView, getWindowSize, managedViews, setTerminalIsFocused, updateFrameRates } from './windows';
 import { showNavigationOverlay } from './tty/overlay';
 
 const WHEEL_DELTA = 100;
@@ -62,16 +62,21 @@ function ensureInputUnlocked(webContents: any) {
       dbg.sendCommand('Debugger.resume').catch(() => {})
     ]).finally(() => {
       if (!wasAttached) {
-        try { dbg.detach(); } catch (e) {}
+        try { dbg.detach(); } catch (_e) {}
       }
     });
-  } catch (e) {
+  } catch (_e) {
     // Ignore errors
   }
 }
 
 export function handleInput(evt: TermEvent): boolean {
-  const view = focusedView.current;
+  let view = focusedView.current;
+  if (!view || view.destroyed) {
+    view = managedViews.find((candidate) => !candidate.destroyed) ?? null;
+    focusedView.current = view;
+    if (view) updateFrameRates();
+  }
   if (!view) {
     return handleKeyBinding(evt);
   }
@@ -241,8 +246,19 @@ export function handleInput(evt: TermEvent): boolean {
         lastSentMods = mods;
       }
 
+      // When an overlay (omnibox/find/help) is open, scroll the toolbar's
+      // dropdown via IPC. A synthetic mouseWheel sendInputEvent does not
+      // reliably scroll an offscreen webview, so we scroll the container
+      // programmatically in the toolbar. (Vertical wheel only; horizontal
+      // wheel still drives page navigation below.)
+      if (view.omniboxVisible && (kind === 'scrollUp' || kind === 'scrollDown')) {
+        const direction = kind === 'scrollDown' ? 1 : -1;
+        view.toolbar.webContents.send('toolbar:scroll-suggestions', direction * WHEEL_DELTA);
+        return true;
+      }
+
       if (kind === 'scrollUp' || kind === 'scrollDown') {
-        view.content.webContents.sendInputEvent({
+        targetContents.sendInputEvent({
           type: 'mouseWheel',
           wheelTicksY: kind === 'scrollUp' ? 1 : -1,
           wheelTicksX: 0,
@@ -309,7 +325,9 @@ export function handleInput(evt: TermEvent): boolean {
       }
 
       const electronButton =
-        currentDragButton === 'fourth' || currentDragButton === 'fifth' || currentDragButton == null ? undefined : currentDragButton;
+        currentDragButton === 'fourth' || currentDragButton === 'fifth' || currentDragButton == null
+          ? undefined
+          : (currentDragButton as 'left' | 'right' | 'middle');
 
       // @ts-expect-error
       targetContents.lastMousePos = { x: adjustedX, y: adjustedY };

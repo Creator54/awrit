@@ -12,6 +12,8 @@ mock.module('./windows', () => ({
   focusedView,
   managedViews,
   getWindowSize: () => ({ width: 1200, height: 800, cols: 120, rows: 40 }),
+  setTerminalIsFocused: () => {},
+  updateFrameRates: () => {},
 }));
 
 const { handleInput } = await import('./inputHandler');
@@ -188,7 +190,7 @@ describe('handleInput', () => {
     expect(view.toggleOmnibox).toHaveBeenCalled();
   });
 
-  test('keeps the omnibox hotkey available without registered config bindings', () => {
+  test('does not intercept an unregistered omnibox hotkey', () => {
     const { view } = createView();
     focusedView.current = view;
     view.toggleOmnibox = mock(() => {});
@@ -204,7 +206,7 @@ describe('handleInput', () => {
       },
     };
 
-    expect(handleInput(event)).toBe(true);
-    expect(view.toggleOmnibox).toHaveBeenCalled();
+    expect(handleInput(event)).toBe(false);
+    expect(view.toggleOmnibox).not.toHaveBeenCalled();
   });
 });
