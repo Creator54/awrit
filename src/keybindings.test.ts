@@ -65,6 +65,28 @@ describe('Keybindings System', () => {
     expect(handleEvent(event2)).toBe(true);
   });
 
+  test('swallows a multi-key prefix for an idle browser view', () => {
+    loadKeyBindings({ keybindings: { '<C-w>l': () => {} } });
+
+    const event: TermEvent = {
+      eventType: 'key',
+      keyEvent: {
+        code: 'w',
+        modifiers: ['ctrl'],
+        down: true,
+        isCharEvent: false,
+      },
+    };
+    const view = {
+      inputFocused: false,
+      omniboxVisible: false,
+      findVisible: false,
+      keyHelpVisible: false,
+    } as any;
+
+    expect(handleEvent(event, view)).toBe(true);
+  });
+
   test('handle modifier order consistently', () => {
     const config = {
       keybindings: {

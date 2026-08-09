@@ -5,7 +5,10 @@ import type { WindowView } from './windows';
 
 const isMac = process.platform === 'darwin';
 
-export type KeyBindingAction = ((event: { isMac: boolean; view?: WindowView }) => boolean | undefined) & {
+export type KeyBindingAction = ((event: {
+  isMac: boolean;
+  view?: WindowView;
+}) => boolean | undefined) & {
   displayName?: string;
 };
 
@@ -60,7 +63,7 @@ function parseKeyBinding(binding: string): string[] {
         // Handle special keys like <C-a> or <Enter>
         const mods = current.split('-');
         let lastPart = mods[mods.length - 1].toLowerCase();
-        
+
         // Normalize special key names to match awrit-native-rs
         switch (lastPart) {
           case 'cr':
@@ -92,20 +95,28 @@ function parseKeyBinding(binding: string): string[] {
             lastPart = '-';
             break;
         }
-        
+
         for (const mod of mods.slice(0, -1)) {
           const m = mod.toLowerCase();
           switch (m) {
-            case 'c': modifiers.push('ctrl'); break;
-            case 'a': modifiers.push('alt'); break;
-            case 's': modifiers.push('shift'); break;
-            case 'm': modifiers.push('meta'); break;
+            case 'c':
+              modifiers.push('ctrl');
+              break;
+            case 'a':
+              modifiers.push('alt');
+              break;
+            case 's':
+              modifiers.push('shift');
+              break;
+            case 'm':
+              modifiers.push('meta');
+              break;
           }
         }
 
         if (modifiers.length > 0) {
-          let combo = [...new Set(modifiers)].sort().concat(lastPart).join('+');
-          
+          const combo = [...new Set(modifiers)].sort().concat(lastPart).join('+');
+
           parts.push(combo);
           modifiers = [];
         } else {
@@ -179,16 +190,16 @@ export function loadKeyBindings(config: { keybindings: Record<string, KeyBinding
  */
 export function getAllKeyBindings() {
   const grouped = new Map<string, Map<string, string>>();
-  
+
   for (const group of bindings.values()) {
     for (const binding of group) {
       const actionName = binding.action.displayName || binding.action.name || 'Unknown Action';
       const normalizedSeq = binding.keys.join(' ');
-      
+
       if (!grouped.has(actionName)) {
         grouped.set(actionName, new Map());
       }
-      
+
       const actionBindings = grouped.get(actionName);
       if (actionBindings && !actionBindings.has(normalizedSeq)) {
         actionBindings.set(normalizedSeq, binding.original);
@@ -224,15 +235,15 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   }
 
   const { code, modifiers } = keyEvent;
-  let normalizedCode = code.toLowerCase();
-  
+  const normalizedCode = code.toLowerCase();
+
   // Filter and normalize modifiers for matching
   let matchedModifiers = modifiers
-    .map(m => m.toLowerCase())
-    .filter(m => ['ctrl', 'alt', 'shift', 'meta'].includes(m));
+    .map((m) => m.toLowerCase())
+    .filter((m) => ['ctrl', 'alt', 'shift', 'meta'].includes(m));
 
   matchedModifiers = [...new Set(matchedModifiers)];
-  
+
   const isAlpha = /^[a-zA-Z]$/.test(code);
   const isUppercase = isAlpha && code === code.toUpperCase();
   const isSymbol = code.length === 1 && !isAlpha && !/^[0-9]$/.test(code);
@@ -242,12 +253,13 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
       matchedModifiers.push('shift');
     }
   } else if (isSymbol && matchedModifiers.includes('shift')) {
-    // For symbols, we only keep shift if it was explicitly sent, 
+    // For symbols, we only keep shift if it was explicitly sent,
     // to match how parseKeyBinding handles them.
   }
-  
+
   const sortedModifiers = matchedModifiers.sort();
-  const key = sortedModifiers.length > 0 ? [...sortedModifiers, normalizedCode].join('+') : normalizedCode;
+  const key =
+    sortedModifiers.length > 0 ? [...sortedModifiers, normalizedCode].join('+') : normalizedCode;
 
   if (options.dev) {
     console_.error('[KeyDebug]', {
@@ -255,7 +267,7 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
       rawMods: modifiers,
       essentialMods: matchedModifiers,
       matchedKey: key,
-      isDown: keyEvent.down
+      isDown: keyEvent.down,
     });
   }
 
@@ -271,7 +283,7 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   const checkMatch = (sequence: string[]): boolean | 'prefix' => {
     const firstKey = sequence[0];
     const keyBindings = bindings.get(firstKey);
-    
+
     if (!keyBindings) return false;
 
     const matchesPrefix = keyBindings.some(
@@ -283,9 +295,7 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
     if (!matchesPrefix) return false;
 
     const exactMatch = keyBindings.find(
-      (b) =>
-        sequence.length === b.keys.length &&
-        sequence.every((k, i) => k === b.keys[i]),
+      (b) => sequence.length === b.keys.length && sequence.every((k, i) => k === b.keys[i]),
     );
 
     const hasLongerBindings = keyBindings.some(
@@ -312,7 +322,7 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
         console_.error('[KeyAction]', {
           original: exactMatch.original,
           handled,
-          inputFocused: view?.inputFocused
+          inputFocused: view?.inputFocused,
         });
       }
       if (handled === false) {
@@ -329,19 +339,19 @@ export function handleEvent(event: TermEvent, view?: WindowView): boolean {
   };
 
   const result = checkMatch(currentSequence);
-  
+
   if (result === 'prefix') {
     // When no input is focused and no overlay is active, swallow prefix keys
     // so multi-key sequences like 'gg' don't leak keystrokes to the page.
-    const isIdle = !view?.inputFocused;
+    const isIdle = view !== undefined && !view.inputFocused;
     const isOverlayActive = view?.omniboxVisible || view?.findVisible || view?.keyHelpVisible;
-    
+
     if (isIdle && !isOverlayActive) {
-      return true; 
+      return true;
     }
     return false;
   }
-  
+
   if (result === false && currentSequence.length > 1) {
     // Mismatch in sequence, try starting a new sequence with the last key
     currentSequence = [key];
