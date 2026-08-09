@@ -14,7 +14,7 @@ process.on('unhandledRejection', (reason) => {
   console_.error('UNHANDLED REJECTION:', reason);
 });
 
-import { app, dialog, ipcMain, nativeTheme, Menu, shell } from 'electron';
+import { app, dialog, nativeTheme, Menu } from 'electron';
 
 import {
   termEnableFeatures,
@@ -32,6 +32,7 @@ import { clearPlacements } from './tty/kittyGraphics';
 import { loadKeyBindings } from './keybindings';
 import { loadSessionConfig } from './session';
 import { registerProviders } from './authConfig';
+import { updateShaderSettings, type ShaderSettings } from './shaderConfig';
 
 let homepage = 'https://github.com/chase/awrit';
 let urlBarDefaultVisible = false;
@@ -97,6 +98,7 @@ function loadConfig(config: typeof import('../config.js')) {
   if (config.auth) {
     registerProviders(config.auth);
   }
+  updateShaderSettings(config.shader as unknown as Partial<ShaderSettings> | undefined);
 }
 
 const CONFIG_PATH = '../config.js';
@@ -130,7 +132,7 @@ try {
       }
     }, 300);
   });
-} catch (e) {
+} catch (_e) {
   // Fallback to polling if fs.watch is not available (e.g., NFS mounts)
   fs.watchFile(CONFIG_PATH_RESOLVED, { interval: 1000 }, (curr, prev) => {
     if (curr.mtime <= prev.mtime) return;
@@ -293,7 +295,7 @@ app.whenReady().then(async () => {
     size = { ...size, width: 800, height: 600 };
   }
   
-  const window = await createWindowWithToolbar(size, INITIAL_URL, {
+  await createWindowWithToolbar(size, INITIAL_URL, {
     urlBarVisible: urlBarDefaultVisible
   });
 

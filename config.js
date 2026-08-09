@@ -67,6 +67,26 @@ const kitty = {
   },
 };
 
+/** Content Post-Process Shader
+ * An optional, opt-in GPU-free post-process applied to the rendered webpage
+ * bitmap before it is composited into the terminal. This is the closest thing
+ * to a "shader" awrit can do, because the actual pixels come from Chromium and
+ * are handed to the terminal as a bitmap (there is no GLSL stage in between).
+ *
+ * It costs CPU on every frame, so it is OFF by default. Enable per-effect.
+ *   - vignette: darken the corners (subtle cinematic focus)
+ *   - contrast:  nudge overall contrast (e.g. 1.08 = +8%)
+ *   - tint:      warm/cool color grade, one of 'none' | 'warm' | 'cool'
+ *   - scanline:  ultra-subtle horizontal line darkening (CRT feel)
+ */
+const shader = {
+  enabled: false,
+  vignette: 0.35,    // 0..1 strength
+  contrast: 1.0,     // 1.0 = unchanged
+  tint: 'none',      // 'none' | 'warm' | 'cool'
+  scanline: 0.0,     // 0..1 strength
+};
+
 /** Keybindings
  *
  * @typedef {import('./src/keybindings').KeyBindingAction} KeyBindingAction
@@ -625,6 +645,7 @@ const config = {
   debugPort,
   auth,
   kitty,
+  shader,
 };
 
 module.exports = config;
