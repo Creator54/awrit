@@ -258,6 +258,7 @@ export async function createWindowWithToolbar(
   const destructors: Array<() => void> = [];
   const refreshers: Array<() => void> = [];
 
+  let lastAttemptedUrl = initialUrl;
   let suppressionTimeout: NodeJS.Timeout | null = null;
 
   const startSuppression = () => {
@@ -560,6 +561,9 @@ export async function createWindowWithToolbar(
   content.webContents.setWindowOpenHandler(handleNewWindow);
 
   content.webContents.on('will-navigate', (_event, url) => {
+    if (!url.startsWith('data:text/html')) {
+      lastAttemptedUrl = url;
+    }
     const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
     console_.log(`[Navigation] Will navigate to: ${displayUrl}, freezing display...`);
 
@@ -598,6 +602,9 @@ export async function createWindowWithToolbar(
 
   content.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
+      if (!url.startsWith('data:text/html')) {
+        lastAttemptedUrl = url;
+      }
       const displayUrl = url.length > 100 ? `${url.substring(0, 100)}...` : url;
       console_.log(
         `[Navigation] Main frame hard navigation to: ${displayUrl}, ensuring display freeze...`,
@@ -821,7 +828,12 @@ export async function createWindowWithToolbar(
     },
     reload: () => {
       startSuppression();
-      content.webContents.reload();
+      const currentUrl = content.webContents.getURL();
+      if (currentUrl.startsWith('data:text/html') && lastAttemptedUrl) {
+        content.webContents.loadURL(lastAttemptedUrl);
+      } else {
+        content.webContents.reload();
+      }
     },
     toggleDevTools: () => {
       if (content.webContents.isDevToolsOpened()) {
@@ -1027,8 +1039,7 @@ function setupToolbarIPC(
       }
     },
     'toolbar:navigate-refresh': () => {
-      view.startSuppression();
-      contentContents.reload();
+      view.reload();
     },
     'toolbar:navigate-to': (_e: any, url: string) => {
       view.startSuppression();
