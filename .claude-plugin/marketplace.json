@@ -1,0 +1,11 @@
+{
+  "name": "awrit",
+  "owner": { "name": "awrit" },
+  "plugins": [
+    {
+      "name": "awrit-chat",
+      "source": "./plugins/awrit-chat",
+      "description": "Awrit chat sidebar and overlay for Claude Code"
+    }
+  ]
+}
