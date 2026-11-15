@@ -7,25 +7,7 @@ type ZoomState = Record<string, number>;
 
 const zoomMap = new Map<string, number>();
 
-const ZOOM_STATE_FILE = path.join(getAppDataPath(), 'zoom-state.json');
-
-/**
- * Loads zoom state from disk into memory.
- * Silently handles missing files (new users).
- */
-export async function loadZoomState(): Promise<void> {
-  try {
-    const data = await fs.promises.readFile(ZOOM_STATE_FILE, 'utf-8');
-    const state: ZoomState = JSON.parse(data);
-    for (const [origin, factor] of Object.entries(state)) {
-      zoomMap.set(origin, factor);
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console_.error('[zoom-state] failed to load:', err);
-    }
-  }
-}
+const getZoomStateFile = () => path.join(getAppDataPath(), 'zoom-state.json');
 
 /**
  * Returns the cached zoom factor for an origin, or 1.0 as default.
@@ -37,7 +19,7 @@ export function getZoomFactor(origin: string): number {
   if (cached !== undefined) return cached;
   // Fallback: read directly from JSON file if cache miss
   try {
-    const data = fs.readFileSync(ZOOM_STATE_FILE, 'utf-8');
+    const data = fs.readFileSync(getZoomStateFile(), 'utf-8');
     const state: ZoomState = JSON.parse(data);
     return state[origin] ?? 1.0;
   } catch {
@@ -53,13 +35,20 @@ export function setZoomFactor(origin: string, factor: number): void {
 }
 
 /**
- * Persists the current zoom map to disk.
+ * Persists changed origins to disk, keeping origins saved earlier (or written
+ * by config.js) that this session never touched.
  * Errors are swallowed to avoid crashing the app on write failure.
  */
 export async function saveZoomState(): Promise<void> {
   try {
-    const state: ZoomState = Object.fromEntries(zoomMap);
-    await fs.promises.writeFile(ZOOM_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    let saved: ZoomState = {};
+    try {
+      saved = JSON.parse(await fs.promises.readFile(getZoomStateFile(), 'utf-8'));
+    } catch {
+      // Missing or unreadable file: start from this session's values.
+    }
+    const state: ZoomState = { ...saved, ...Object.fromEntries(zoomMap) };
+    await fs.promises.writeFile(getZoomStateFile(), JSON.stringify(state, null, 2), 'utf-8');
   } catch (err) {
     console_.error('[zoom-state] failed to save:', err);
   }

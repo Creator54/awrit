@@ -7,6 +7,15 @@ use std::arch::aarch64::*;
 const BYTES_PER_PIXEL: usize = 4;
 const CHUNK_SIZE: usize = BYTES_PER_PIXEL * 4096 * 1024; // 16MB chunks
 
+/// Byte indices that turn one 4-pixel BGRA block into RGBA, alpha left in place.
+#[rustfmt::skip]
+const BGRA_TO_RGBA_SHUFFLE: [u8; 16] = [
+  2, 1, 0, 3, // B G R A -> R G B A
+  6, 5, 4, 7,
+  10, 9, 8, 11,
+  14, 13, 12, 15,
+];
+
 #[derive(Copy, Clone)]
 pub struct Rect {
   pub x: u32,
@@ -224,13 +233,6 @@ unsafe fn bgra_to_rgba_chunk(src: &[u8], dst: &mut [u8]) { unsafe {
   let src_aligned = src_ptr as usize % ALIGN_SIZE == 0;
   let dst_aligned = dst_ptr as usize % ALIGN_SIZE == 0;
 
-  static SHUFFLE_TABLE: [u8; 16] = [
-    2, 1, 0, 3,    // First pixel
-    6, 5, 4, 7,    // Second pixel
-    10, 9, 8, 11,  // Third pixel
-    14, 13, 12, 15 // Fourth pixel
-  ];
-
   for i in (0..len - len % ALIGN_SIZE).step_by(ALIGN_SIZE) {
     let bgra = if src_aligned {
       vld1q_u8_aligned(src_ptr.add(i))
@@ -239,7 +241,7 @@ unsafe fn bgra_to_rgba_chunk(src: &[u8], dst: &mut [u8]) { unsafe {
     };
 
     // Load the shuffle mask and apply it
-    let tbl = vld1q_u8(SHUFFLE_TABLE.as_ptr());
+    let tbl = vld1q_u8(BGRA_TO_RGBA_SHUFFLE.as_ptr());
     let rgba = vqtbl1q_u8(bgra, tbl);
 
     // Use non-temporal store for large buffers
@@ -413,8 +415,8 @@ unsafe fn bgra_to_rgba_rect_chunk(
       }
 
       let bgra = vld1q_u8(src_ptr.add(src_offset));
-      let rgba = vrev64q_u8(vextq_u8(bgra, bgra, 8));
-      let final_rgba = vcombine_u8(vget_low_u8(rgba), vget_high_u8(bgra));
+      let tbl = vld1q_u8(BGRA_TO_RGBA_SHUFFLE.as_ptr());
+      let final_rgba = vqtbl1q_u8(bgra, tbl);
 
       // Use non-temporal store for large rectangles
       if rect_width * rect_height * BYTES_PER_PIXEL > CHUNK_SIZE {
@@ -477,6 +479,42 @@ mod tests {
     unsafe {
       std::alloc::dealloc(dst_ptr, layout);
     }
+  }
+
+  #[test]
+  fn test_alpha_is_carried_not_premultiplied() {
+    // Opaque, half transparent and fully transparent pixels with distinct channels.
+    #[rustfmt::skip]
+    let src = [
+      10, 20, 30, 0xff,
+      40, 50, 60, 0x80,
+      70, 80, 90, 0x00,
+      1, 2, 3, 0xff,
+      5, 6, 7, 0xff,
+      9, 10, 11, 0xff,
+      13, 14, 15, 0xff,
+      17, 18, 19, 0xff,
+    ];
+
+    let mut dst = vec![0u8; src.len()];
+    assert!(bgra_to_rgba(&src, &mut dst));
+    assert_eq!(dst[0..4], [30, 20, 10, 0xff]); // opaque stays opaque
+    assert_eq!(dst[4..8], [60, 50, 40, 0x80]); // semi-transparent round-trips
+    assert_eq!(dst[8..12], [90, 80, 70, 0x00]); // colour not premultiplied
+
+    // The SIMD path must give the same bytes: one aligned 4-pixel block.
+    let mut rect_dst = vec![0u8; 16];
+    let rect = Rect {
+      x: 0,
+      y: 0,
+      width: 4,
+      height: 1,
+    };
+    assert!(bgra_to_rgba_rect(&src, &mut rect_dst, 4, rect));
+    assert_eq!(
+      rect_dst,
+      [30, 20, 10, 0xff, 60, 50, 40, 0x80, 90, 80, 70, 0x00, 3, 2, 1, 0xff]
+    );
   }
 
   #[test]

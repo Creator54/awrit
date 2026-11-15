@@ -20,27 +20,6 @@ const urlBar = {
  **/
 const profile = process.env.AWRIT_PROFILE || null;
 
-/** Debug Port
- * Port for remote debugging (CDP) - for programmatic control
- * External clients can connect to ws://localhost:<port>/devtools/...
- **/
-const debugPort = 9222;
-
-/** Secure Authentication Configuration
- * Google OAuth Client ID - registers awrit as a legitimate app with Google.
- * Login happens directly in awrit (no system browser redirect needed).
- **/
-const auth = {
-  providers: [
-    {
-      name: 'google',
-      domains: ['accounts.google.com'],
-      clientId: '1003228370782-652d92q21gcknh408dpb3fhfl927jnld.apps.googleusercontent.com',
-      redirectPort: 9223,
-    },
-  ],
-};
-
 /** Kitty Integration
  * Configuration for running awrit in Kitty terminal splits
  **/
@@ -65,26 +44,6 @@ const kitty = {
     x: 30,
     y: 30,
   },
-};
-
-/** Content Post-Process Shader
- * An optional, opt-in GPU-free post-process applied to the rendered webpage
- * bitmap before it is composited into the terminal. This is the closest thing
- * to a "shader" awrit can do, because the actual pixels come from Chromium and
- * are handed to the terminal as a bitmap (there is no GLSL stage in between).
- *
- * It costs CPU on every frame, so it is OFF by default. Enable per-effect.
- *   - vignette: darken the corners (subtle cinematic focus)
- *   - contrast:  nudge overall contrast (e.g. 1.08 = +8%)
- *   - tint:      warm/cool color grade, one of 'none' | 'warm' | 'cool'
- *   - scanline:  ultra-subtle horizontal line darkening (CRT feel)
- */
-const shader = {
-  enabled: false,
-  vignette: 0.35,    // 0..1 strength
-  contrast: 1.0,     // 1.0 = unchanged
-  tint: 'none',      // 'none' | 'warm' | 'cool'
-  scanline: 0.0,     // 0..1 strength
 };
 
 /** Keybindings
@@ -138,7 +97,7 @@ const shader = {
  */
 function isVimNavigating({ view }) {
   const noInput = !view?.inputFocused;
-  const noOverlay = !(view?.omniboxVisible || view?.findVisible || view?.keyHelpVisible);
+  const noOverlay = !(view?.omniboxVisible || view?.findVisible || view?.keyHelpVisible || view?.designMode);
   const shouldNavigate = noInput && noOverlay;
 
   if (process.env.AWRIT_DEBUG_VIM) {
@@ -214,7 +173,13 @@ function scrollHalfPageUp({ view }) {
 /** @type {KeyBindingAction} */
 function blurInput({ view }) {
   if (!view) return false;
-  
+
+  // The lock's site-info panel closes first; the omnibox stays open behind it.
+  if (view.omniboxVisible && view.siteInfoOpen) {
+    view.toolbar.webContents.send('toolbar:close-site-info');
+    return true;
+  }
+
   let closedOverlay = false;
   if (view.omniboxVisible) {
     view.toggleOmnibox();
@@ -233,6 +198,7 @@ function blurInput({ view }) {
   if (closedOverlay) return true;
 
   // Blur focused element so vim keys resume
+  view.inputFocused = false;
   view.content.webContents.executeJavaScript(`
     if (document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement) {
       document.activeElement.blur();
@@ -355,7 +321,6 @@ function toggleDarkMode({ view }) {
 }
 
 const { exec } = require('child_process');
-const electron = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -366,9 +331,9 @@ const CLIPBOARD_TIMEOUT_MS = 500;
 /**
  * Write text to the terminal emulator's clipboard using OSC 52.
  */
-function writeToTerminalClipboard(text) {
-  const base64 = Buffer.from(text).toString('base64');
-  process.stdout.write(`\x1b]52;c;${base64}\x07`);
+function writeToTerminalClipboard(text, view) {
+  // The owner's stdout is a log file; only the pane's terminal output reaches the emulator.
+  view?.terminal?.output.writeToTerminalClipboard(text);
 }
 
 /**
@@ -395,13 +360,17 @@ function execWithTimeout(cmd, input, timeoutMs = CLIPBOARD_TIMEOUT_MS) {
  * Write text to system clipboard
  * Uses Electron clipboard (fast, non-blocking) with native fallback
  */
-async function writeToSystemClipboard(text) {
+async function writeToSystemClipboard(text, view) {
+  if (view?.onCopyToClipboard) {
+    view.onCopyToClipboard(text);
+    return;
+  }
   try {
     // Primary: Electron clipboard (fast, non-blocking)
-    electron.clipboard.writeText(text);
+    require('electron').clipboard.writeText(text);
     
     // Secondary: Terminal OSC 52 (Robust over SSH/Wayland)
-    writeToTerminalClipboard(text);
+    writeToTerminalClipboard(text, view);
   } catch (e) {
     // Fallback: native clipboard with timeout
     try {
@@ -429,7 +398,7 @@ async function writeToSystemClipboard(text) {
 async function readFromSystemClipboard() {
   try {
     // Primary: Electron clipboard (fast, non-blocking)
-    const text = electron.clipboard.readText();
+    const text = require('electron').clipboard.readText();
     if (text) return text;
   } catch (e) {
     // Continue to fallback
@@ -479,7 +448,7 @@ function copy({ view }) {
     .then((selectedText) => {
       if (selectedText && selectedText.length > 0) {
         // Write to both Electron and Terminal clipboards
-        writeToSystemClipboard(selectedText).catch((err) => {
+        writeToSystemClipboard(selectedText, view).catch((err) => {
           console.error('[Clipboard] Write failed:', err);
         });
       }
@@ -497,7 +466,7 @@ function paste({ view }) {
   readFromSystemClipboard().then((text) => {
     if (text && text.length > 0) {
       setImmediate(() => {
-        electron.clipboard.writeText(text);
+        require('electron').clipboard.writeText(text);
         target.paste();
       });
     }
@@ -509,15 +478,18 @@ function paste({ view }) {
 /**
  * Diagnostic tool to check if clipboard writing works at all
  */
-function diagnosticCopy() {
+function diagnosticCopy({ view } = {}) {
   const testText = `CLIPBOARD TEST - ${new Date().toLocaleTimeString()}`;
   console.log('[Diagnostic] Attempting to write test text to clipboard.');
-  writeToSystemClipboard(testText).catch(e => console.error(e));
+  writeToSystemClipboard(testText, view).catch(e => console.error(e));
 }
 
 /** @type {KeyBindingAction} */
-function quit() {
-  process.emit('SIGINT');
+function quit({ view } = {}) {
+  // A pane closes only itself; SIGINT would stop the shared browser for every pane.
+  if (view?.terminal?.actions) view.terminal.actions.close();
+  else process.emit('SIGINT');
+  return true;
 }
 
 // Zoom limits
@@ -548,6 +520,7 @@ function zoomIn({ view }) {
     const current = view.content.webContents.getZoomFactor();
     const newZoom = Math.min(current + ZOOM_STEP, ZOOM_MAX);
     view.content.webContents.setZoomFactor(newZoom);
+    view.toolbar.webContents.send('content:zoom-changed', view.content.webContents.getZoomFactor());
 
     // Persist zoom state
     const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
@@ -582,6 +555,7 @@ function zoomOut({ view }) {
     const current = view.content.webContents.getZoomFactor();
     const newZoom = Math.max(current - ZOOM_STEP, ZOOM_MIN);
     view.content.webContents.setZoomFactor(newZoom);
+    view.toolbar.webContents.send('content:zoom-changed', view.content.webContents.getZoomFactor());
 
     // Persist zoom state
     const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
@@ -614,6 +588,7 @@ function zoomReset({ view }) {
     if (!origin) return false;
 
     view.content.webContents.setZoomFactor(1.0);
+    view.toolbar.webContents.send('content:zoom-changed', view.content.webContents.getZoomFactor());
 
     // Persist zoom state (remove entry or set to 1.0)
     const zoomDir = path.join(os.homedir(), '.local', 'share', 'awrit');
@@ -642,10 +617,7 @@ const config = {
   keybindings,
   urlBar,
   profile,
-  debugPort,
-  auth,
   kitty,
-  shader,
 };
 
 module.exports = config;

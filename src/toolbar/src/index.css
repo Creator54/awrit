@@ -5,7 +5,16 @@
 /* Base resets - Bulletproof for Offscreen Rendering */
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb, #62616f) var(--scroll-track, #141419);
 }
+
+/* Shared native scrollbars for every app-owned scroll surface. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--scroll-track, #141419); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb, #62616f); border: 2px solid var(--scroll-track, #141419); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover, #858492); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 
 body {
   margin: 0;
@@ -19,21 +28,91 @@ body {
 
 :root {
   /* Solid Zen Palette - sampled directly */
-  --palette-bg: #1c1b22;
-  --palette-border: #333333;
-  --palette-highlight: rgba(255, 255, 255, 0.08);
-  --palette-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --palette-bg: #0c0e10;
+  --palette-border: #3b3d40;
   --palette-radius: 12px;
   
   /* Selection Colors */
-  --row-hover-bg: #2b2a33;
+  --row-hover-bg: #202226;
   --row-radius: 8px;
   
   /* Text & Muting */
-  --text-primary: #fbfbfe;
-  --text-muted: #8f8f9d;
-  --accent: #0060df;
+  --text-primary: #e4e4e7;
+  --text-muted: #adadb8;
+  --accent: #9bc1ff;
+
+  /* Shared chrome tokens */
+  --ui-surface: #202326;
+  --ui-shadow: 0 10px 30px #0006;
+  --ui-line-strong: #ffffff60;
+  --ui-text: #e2e3e4;
+  --ui-accent: #a6bacd;
+
+  --duration-fast: 200ms;
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
 }
+
+/* Keep review chrome independent from the page theme. */
+.design-review {
+  color-scheme: var(--awrit-terminal-scheme, dark);
+  --ui-bg: light-dark(#f7f6f2, #202428);
+  --ui-surface: light-dark(#fffefa, #292e33);
+  --ui-text: light-dark(#24282b, #eef0eb);
+  --ui-muted: light-dark(#626969, #afb8b7);
+  --ui-line: light-dark(#dedfd9, #41494f);
+  --ui-line-strong: light-dark(#afb5b1, #69757b);
+  --ui-accent: light-dark(#245fd1, #8cb4ff);
+  --accent: var(--ui-accent);
+  --ui-warn: light-dark(#855900, #e7bd68);
+  --ui-danger: light-dark(#b62e38, #ff939c);
+  --scroll-track: var(--ui-bg);
+  --scroll-thumb: var(--ui-line-strong);
+  --scroll-thumb-hover: var(--ui-muted);
+  background-color: var(--ui-bg);
+}
+.design-review-terminal { background-color: transparent; }
+.design-review .awrit-feedback-input { color-scheme: inherit; }
+.design-review button:not(:disabled) { cursor: pointer; }
+.design-review button:disabled { cursor: default; }
+.design-review button:hover:not(:disabled) { background-color: light-dark(#e9ece6, #3b444c); }
+.design-review button:active:not(:disabled) { background-color: light-dark(#d6dcd5, #4d5964); }
+.design-review-toolbar button:hover:not(:disabled) { background-color: #41494e; }
+.design-review-toolbar button:active:not(:disabled) { background-color: #566169; }
+.design-review-toolbar {
+  background: #24282b;
+  color: #fffefa;
+  border-color: #41474b;
+  box-shadow: 0 4px 16px #0003;
+}
+.design-review-send {
+  background: #fffefa;
+  color: #24282b;
+}
+.design-review .design-review-send:hover:not(:disabled) { background: #e8edf6; }
+.design-review .design-review-send:active:not(:disabled) { background: #cbd9f0; }
+.design-review-send:disabled { background: #41474b; color: #c6cbc9; opacity: 1; }
+.design-review-note-send { background: #245fd1; color: #fff; }
+.design-review .design-review-note-send:hover:not(:disabled) { background: #1c4daa; }
+.design-review .design-review-note-send:active:not(:disabled) { background: #153c87; }
+.design-review-comment { box-shadow: 0 6px 24px #18202a26; }
+.design-review button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 3px;
+}
+.design-review-toolbar button:focus-visible { outline-color: #afcbff; }
+.design-review-grip { opacity: 0.7; }
+@media (hover: hover) and (pointer: fine) {
+  .design-review-grip { opacity: 0; pointer-events: none; }
+  .design-review-toolbar:hover .design-review-grip,
+  .design-review-toolbar:focus-within .design-review-grip { opacity: 0.7; pointer-events: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .design-review button { transition: none; }
+  :root { --duration-fast: 0ms; }
+}
+
+@keyframes palette-in { from { opacity: 0; transform: translateY(-4px); } }
 
 @layer components {
   /* Rigid Centering & Scroll Capture */
@@ -55,56 +134,58 @@ body {
     z-index: -1;
   }
 
-  .floating-palette, .permission-palette, .find-palette {
+  .floating-palette, .permission-palette {
     background-color: var(--palette-bg);
     border: 1px solid var(--palette-border);
-    border-top: 1px solid var(--palette-highlight);
     border-radius: var(--palette-radius);
-    box-shadow: var(--palette-shadow);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     pointer-events: auto;
-    /* Subtle inner top sheen for a "lit" glass feel */
-    background-image: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0) 22%
-    );
-    transform-origin: center top;
-    animation: paletteIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    max-height: calc(100dvh - 32px);
+    min-width: 0;
+    animation: palette-in var(--duration-fast) var(--ease-decelerate);
   }
 
-  /* Entrance: rise + scale + fade */
-  @keyframes paletteIn {
-    from {
-      opacity: 0;
-      transform: translateY(8px) scale(0.97);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  .floating-palette {
-    /* Force unyielding width */
-    width: 650px !important;
-    min-width: 650px !important;
-    max-width: 650px !important;
-  }
-
-  .permission-palette {
-    width: 400px !important;
-    min-width: 400px !important;
-    max-width: 400px !important;
-  }
-
-  .find-palette {
-    width: 350px !important;
-    min-width: 350px !important;
-    max-width: 350px !important;
-  }
+  .floating-palette { width: min(520px, calc(100vw - 32px)); }
+  .permission-palette { width: min(400px, calc(100vw - 32px)); overflow-y: auto; }
+  .floating-palette .input-container { height: 56px; }
+  .floating-palette:focus-within { border-color: var(--ui-accent); }
+  .site-info-btn { color: var(--text-muted); background: transparent; border: none; padding: 4px; margin: -4px; border-radius: 6px; cursor: pointer; }
+  .site-info-btn:hover, .site-info-btn.open { color: var(--text-primary); background: #2b2a33; }
+  .site-info-btn.insecure { color: #e0a64a; }
+  .site-info-btn:focus-visible { outline: 2px solid #8f8f9d; }
+  .zoom-chip { flex: none; color: var(--text-muted); background: transparent; border: none; font-size: 12px; font-variant-numeric: tabular-nums; padding: 2px 6px; margin-left: 8px; border-radius: 4px; cursor: pointer; }
+  .zoom-chip:hover { color: var(--text-primary); background: #2b2a33; }
+  .zoom-chip:focus-visible { outline: 2px solid #8f8f9d; }
+  .site-info-panel { padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c4c4cc; }
+  .site-info-host { font-size: 14px; color: var(--text-primary); word-break: break-all; }
+  .site-info-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .site-info-row.muted { color: var(--text-muted); font-size: 12px; }
+  .site-info-row.insecure { color: #e0a64a; }
+  .site-info-choice { display: flex; background: #1c1b22; border-radius: 6px; padding: 2px; gap: 2px; }
+  .site-info-choice button { color: var(--text-muted); background: transparent; border: none; font-size: 12px; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
+  .site-info-choice button:hover { color: var(--text-primary); }
+  .site-info-choice button.active { background: #3a3945; color: var(--text-primary); }
+  .site-info-choice button:focus-visible { outline: 2px solid #8f8f9d; }
+  .site-info-action { color: #8ab4f8; background: transparent; border: none; cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; }
+  .site-info-action:hover { background: #2b2a33; }
+  .site-info-action:focus-visible { outline: 2px solid #8f8f9d; }
+  .permission-body { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .permission-host { font-size: 14px; color: var(--text-primary); word-break: break-all; }
+  .permission-text { font-size: 13px; color: var(--text-muted); }
+  .permission-what { color: #c4c4cc; }
+  .permission-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .permission-btn { font-size: 13px; padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer; color: var(--text-primary); background: #2b2a33; }
+  .permission-btn:hover { background: #3a3945; }
+  .permission-btn.primary { background: #4a4955; }
+  .permission-btn.primary:hover { background: #5a5966; }
+  .permission-btn:focus-visible { outline: 2px solid #8f8f9d; outline-offset: 2px; }
+  .palette-divider { height: 1px; background: var(--palette-border); flex-shrink: 0; }
+  .palette-input::placeholder { color: var(--text-muted); opacity: 1; }
+  .palette-input::selection { color: #1c1b22; background: #c4d7f5; }
+  .suggestion-icon, .suggestion-domain { color: var(--text-muted); }
+  .suggestion-title { color: #c4c4cc; font-size: 14px; font-weight: 400; }
 
   .input-container {
     position: relative;
@@ -139,27 +220,29 @@ body {
     display: flex;
     flex-direction: column;
     padding: 8px;
-    max-height: 400px;
-    overflow-y: scroll; /* Force scroll context */
+    max-height: 288px;
+    min-height: 0;
+    overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
     flex-grow: 1;
   }
 
   .suggestion-item {
     display: flex;
     align-items: center;
-    padding: 10px 12px;
+    min-height: 48px;
+    padding: 8px 12px;
     border-radius: var(--row-radius);
     gap: 12px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background-color 0.12s ease;
   }
 
   .suggestion-item.selected {
     background-color: var(--row-hover-bg);
+    outline: 1px solid #70747c;
+    outline-offset: -1px;
   }
 
   /* Remove-from-history control, revealed on the highlighted row */
@@ -168,20 +251,14 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     margin-left: 4px;
-    border-radius: 6px;
-    color: rgba(251, 251, 254, 0.45);
+    border-radius: var(--row-radius);
+    color: var(--text-muted);
     background: transparent;
     border: none;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease;
-  }
-
-  .suggestion-item.selected .suggestion-remove-btn {
-    opacity: 1;
   }
 
   .suggestion-remove-btn:hover {
@@ -193,53 +270,22 @@ body {
     background-color: rgba(0, 96, 223, 0.35);
   }
 
-  .animate-fade-in {
-    animation: fadeIn 120ms ease-out forwards;
-  }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  /* Top loading progress bar: gradient + travelling shimmer */
   .loading-bar {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 2px;
-    background: linear-gradient(
-      90deg,
-      #0060df 0%,
-      #00a0ff 50%,
-      #0060df 100%
-    );
-    background-size: 200% 100%;
-    box-shadow:
-      0 0 8px rgba(0, 96, 223, 0.7),
-      0 0 16px rgba(0, 160, 255, 0.4);
+    background: var(--accent);
     transform-origin: left;
-    transition: transform 300ms ease-out, opacity 200ms ease-out;
+    transition: transform 200ms ease-out;
     z-index: 2000;
-    animation: loadingShimmer 1.4s linear infinite;
   }
-
-  @keyframes loadingShimmer {
-    0% { background-position: 0% 0%; }
-    100% { background-position: 200% 0%; }
-  }
-
-  /* Indeterminate state (no known progress) — bar slides across as a sliver */
-  .loading-bar.indeterminate {
-    width: 32% !important;
-    animation: loadingShimmer 1.4s linear infinite, loadingSlide 1.1s ease-in-out infinite;
-  }
-
-  @keyframes loadingSlide {
-    0% { transform: translateX(-120%); opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { transform: translateX(420%); opacity: 0.6; }
+  .loading-bar.indeterminate { width: 32%; }
+  @media (prefers-reduced-motion: reduce) {
+    .loading-bar { transition: none; }
   }
 
   .hover-link-indicator {
@@ -252,10 +298,9 @@ body {
     padding: 2px 8px;
     font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    border-top-right-radius: 4px;
+    border-top-right-radius: var(--row-radius);
     border-top: 1px solid var(--palette-border);
     border-right: 1px solid var(--palette-border);
-    box-shadow: 0 0 12px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(255, 255, 255, 0.05) inset;
     z-index: 1500;
     pointer-events: none;
     white-space: nowrap;
@@ -263,23 +308,11 @@ body {
     text-overflow: ellipsis;
   }
 
-  /* Thin Zen Scrollbar */
-  .suggestions-container::-webkit-scrollbar {
-    width: 6px;
+  .awrit-feedback-input {
+    color-scheme: dark;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
   }
-  .suggestions-container::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .suggestions-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
-    border: 1px solid transparent;
-    background-clip: content-box;
-  }
-  .suggestions-container::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-  }
-  .suggestions-container::-webkit-scrollbar-thumb:active {
-    background-color: rgba(255, 255, 255, 0.3);
-  }
+
 }
