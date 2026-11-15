@@ -1,0 +1,58 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "include-component-in-tag": false,
+      "bootstrap-sha": "92d96c520b34d6f8e6cf615bc6aae463adc9f706",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        },
+        {
+          "type": "docs",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "chore",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "ci",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "build",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "test",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "refactor",
+          "section": "Other",
+          "hidden": true
+        },
+        {
+          "type": "style",
+          "section": "Other",
+          "hidden": true
+        }
+      ]
+    }
+  }
+}

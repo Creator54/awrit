@@ -1,0 +1,32 @@
+name: Checks
+'on':
+  pull_request:
+  push:
+    branches: [electron]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  ELECTRON_OVERRIDE_DIST_PATH: '/fake/electron'
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      # Android manager tests need podman/adb from the Nix shell; run the rest.
+      - run: bun test $(git ls-files 'src/*.test.ts' 'src/**/*.test.ts' | grep -v '^src/adb/' | tr '\n' ' ')
+      - run: python3 -I tests/awrit-kitten-test.py
+      - run: sh packaging/build-native.sh
