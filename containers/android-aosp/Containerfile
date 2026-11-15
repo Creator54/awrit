@@ -1,0 +1,15 @@
+# AOSP guest for development without Google services. Built locally, never published.
+# The SDK and emulator come from the same pinned image used by managed devices.
+# Inherited layers remain on disk; headless mode reduces running services only.
+FROM docker.io/budtmo/docker-android@sha256:ad9a868bcdd8e004f2212b777efc3ae9e0a8d87e0636d10f8e05e70df85762bc
+
+USER root
+# Use existing SDK licenses. Fail if this package requires additional acceptance.
+# SDK package revisions can change upstream; record the installed package.xml.
+RUN sdkmanager "system-images;android-33;default;x86_64" </dev/null
+
+USER androidusr
+ENV EMULATOR_IMG_TYPE=default \
+    EMULATOR_SYS_IMG=x86_64 \
+    EMULATOR_HEADLESS=true \
+    EMULATOR_ADDITIONAL_ARGS=-no-window
