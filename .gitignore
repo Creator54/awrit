@@ -7,3 +7,7 @@ out
 awrit_error.txt
 result
 .understand-anything/
+plugins/awrit-chat/tsconfig.json
+__pycache__/
+.claude/
+.kimchi/
