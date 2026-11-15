@@ -32,6 +32,7 @@ export function queryColors(): Promise<QueryResponse> {
   );
 
   const PREFIX = ESC`]21;`;
+  let timeout: ReturnType<typeof setTimeout>;
   const handler = (x: string) => {
     if (!x.startsWith(PREFIX)) return;
 
@@ -45,6 +46,7 @@ export function queryColors(): Promise<QueryResponse> {
         `#${color.slice(4).replace(/\//g, '')}`,
       ]);
     resolve(data);
+    clearTimeout(timeout);
 
     process.stdin.off('data', handler);
     process.stdin.pause();
@@ -52,7 +54,7 @@ export function queryColors(): Promise<QueryResponse> {
   };
   process.stdin.on('data', handler);
 
-  setTimeout(() => {
+  timeout = setTimeout(() => {
     process.stdin.off('data', handler);
     process.stdin.pause();
     process.stdin.setRawMode(false);
@@ -60,6 +62,24 @@ export function queryColors(): Promise<QueryResponse> {
   }, 100);
 
   return promise;
+}
+
+export function terminalScheme(colors: Color[]): 'light' | 'dark' {
+  const background = colors.find(([name]) => name === 'kitty-bg')?.[1];
+  const hex = background?.slice(1);
+  const channels = hex && [6, 12].includes(hex.length)
+    ? [0, 1, 2].map(i => Number.parseInt(hex.slice(i * hex.length / 3, (i + 1) * hex.length / 3), 16) / (hex.length === 12 ? 65535 : 255))
+    : null;
+  const light = channels?.every(Number.isFinite) && channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722 > 0.5;
+  return light ? 'light' : 'dark';
+}
+
+/** Kitty background as `#rrggbb`, so Awrit's backing fills match the terminal. */
+export function terminalBackground(colors: Color[]): string | undefined {
+  const hex = colors.find(([name]) => name === 'kitty-bg')?.[1].slice(1);
+  if (!hex || !/^([0-9a-f]{6}|[0-9a-f]{12})$/i.test(hex)) return undefined;
+  const step = hex.length / 3;
+  return `#${[0, 1, 2].map(i => hex.slice(i * step, i * step + 2)).join('').toLowerCase()}`;
 }
 
 export function colorsToTailwind(colors: Color[]) {

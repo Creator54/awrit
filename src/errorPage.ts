@@ -9,133 +9,103 @@ interface ErrorPageOptions {
   failedUrl: string;
 }
 
-const ERROR_MESSAGES: Record<number, { title: string; tips: string[] }> = {
+const escapeHtml = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char] ?? char,
+  );
+
+const scriptString = (value: string): string => JSON.stringify(value).replace(/</g, '\\u003c');
+
+const ERROR_MESSAGES: Record<number, { title: string; message: string }> = {
   [-2]: {
-    title: 'Network Error',
-    tips: ['Check your internet connection', 'Try again in a moment'],
+    title: 'Network error',
+    message: 'Check your internet connection, then retry.',
   },
   [-3]: {
     // ERR_ABORTED — intentionally navigated away, don't show error
     title: '',
-    tips: [],
+    message: '',
   },
   [-6]: {
-    title: 'Connection Refused',
-    tips: [
-      'The server refused the connection',
-      'Check if the site is running on the correct port',
-      'A firewall may be blocking the connection',
-    ],
+    title: 'File not found',
+    message: 'Check the file path.',
   },
   [-7]: {
-    title: 'Connection Timed Out',
-    tips: [
-      'The server took too long to respond',
-      'Check your internet connection',
-      'The server may be overloaded',
-    ],
+    title: 'Site took too long',
+    message: 'Check your connection or try again later.',
   },
   [-21]: {
-    title: 'Network Changed',
-    tips: ['Your network connection changed', 'Try reloading the page'],
+    title: 'Network changed',
+    message: 'Try again with your current connection.',
   },
   [-100]: {
-    title: 'Connection Closed',
-    tips: ['The connection was unexpectedly closed', 'Try reloading the page'],
+    title: 'Connection closed',
+    message: 'Try again in a moment.',
   },
   [-101]: {
-    title: 'Connection Reset',
-    tips: [
-      'The connection was reset',
-      'Check your internet connection',
-      'A proxy or firewall may be interfering',
-    ],
+    title: 'Connection interrupted',
+    message: 'Check your internet connection, then retry.',
   },
   [-102]: {
-    title: 'Connection Refused',
-    tips: [
-      'The server refused the connection',
-      'Make sure the server is running',
-      'Check the port number',
-    ],
+    title: 'Connection refused',
+    message: 'Check the address and make sure the server is running.',
   },
   [-105]: {
-    title: 'DNS Lookup Failed',
-    tips: [
-      'Could not resolve the domain name',
-      'Check your DNS settings',
-      'The domain may not exist',
-    ],
+    title: "Can't find this site",
+    message: 'Check the address and your internet connection.',
   },
   [-106]: {
-    title: 'No Internet',
-    tips: [
-      'You appear to be offline',
-      'Check your network cable or Wi-Fi',
-      'Try reconnecting to your network',
-    ],
+    title: 'No internet',
+    message: 'Reconnect to the internet, then retry.',
   },
   [-109]: {
-    title: 'Address Unreachable',
-    tips: [
-      'The server address is unreachable',
-      'Check the URL for typos',
-      'The server may be down',
-    ],
+    title: 'Site unreachable',
+    message: 'Check the address or try again later.',
   },
   [-118]: {
-    title: 'Connection Timed Out',
-    tips: [
-      'The connection attempt timed out',
-      'The server may be slow or unresponsive',
-      'Check your internet connection',
-    ],
+    title: 'Site took too long',
+    message: 'Check your connection or try again later.',
   },
   [-130]: {
-    title: 'Proxy Connection Failed',
-    tips: [
-      'Could not connect through the proxy',
-      'Check your proxy settings',
-      'Try connecting directly',
-    ],
+    title: 'Proxy unavailable',
+    message: 'Check your proxy settings.',
   },
   [-137]: {
-    title: 'DNS Lookup Failed',
-    tips: [
-      'Could not resolve the domain name',
-      'Your DNS server may be down',
-      'Try using a different DNS server (e.g. 1.1.1.1)',
-    ],
+    title: "Can't find this site",
+    message: 'Check the address and your internet connection.',
   },
   [-200]: {
-    title: 'Certificate Error',
-    tips: [
-      "The site's security certificate is not trusted",
-      'The certificate may have expired',
-      'Proceed with caution',
-    ],
+    title: 'Certificate error',
+    message: "The site's security certificate is not trusted. The certificate may have expired.",
   },
   [-201]: {
-    title: 'Certificate Date Invalid',
-    tips: [
-      'The security certificate has expired or is not yet valid',
-      'Check that your system clock is correct',
-    ],
+    title: 'Invalid certificate dates',
+    message:
+      'The security certificate has expired or is not yet valid. Check that your system clock is correct.',
+  },
+  [-202]: {
+    title: 'Certificate not trusted',
+    message: 'No trusted authority issued this certificate, as with a self-signed one.',
   },
   [-300]: {
-    title: 'Invalid URL',
-    tips: ['The URL is not valid', 'Check for typos in the address'],
+    title: 'Invalid address',
+    message: 'Check the address for typos.',
   },
   [-301]: {
-    title: 'Unknown URL Scheme',
-    tips: [
-      'The URL uses an unsupported protocol',
-      'awrit supports http://, https://, and file:// URLs',
-    ],
+    title: 'Unsupported address type',
+    message: 'Use an http://, https://, or file:// address.',
   },
   [-324]: {
-    title: 'Empty Response',
-    tips: ['The server returned no data', 'The server may be misconfigured', 'Try again later'],
+    title: 'Site sent no data',
+    message: 'Try again later.',
   },
 };
 
@@ -158,345 +128,98 @@ export function generateErrorPage({
   failedUrl,
 }: ErrorPageOptions): string {
   const info = ERROR_MESSAGES[errorCode] || {
-    title: 'Page Load Failed',
-    tips: ['An unexpected error occurred', 'Try reloading the page'],
+    title: 'Page could not load',
+    message: 'Try again in a moment.',
   };
 
-  // Sanitize the URL for safe display
-  const displayUrl = failedUrl
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-  const tipsHtml = info.tips.map((tip) => `<li>${tip}</li>`).join('\n            ');
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Error — ${info.title}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      background: #0a0a0b;
-      color: #e4e4e7;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .container {
-      max-width: 480px;
-      width: 90%;
-      text-align: center;
-      padding: 40px 32px;
-    }
-
-    .icon {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 24px;
-      border-radius: 50%;
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .icon svg {
-      width: 28px;
-      height: 28px;
-      color: #ef4444;
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 600;
-      color: #fafafa;
-      margin-bottom: 8px;
-      letter-spacing: -0.02em;
-    }
-
-    .url {
-      font-size: 13px;
-      color: #71717a;
-      margin-bottom: 28px;
-      word-break: break-all;
-      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 6px;
-      padding: 8px 12px;
-      display: inline-block;
-      max-width: 100%;
-    }
-
-    .tips {
-      text-align: left;
-      margin: 0 auto 32px;
-      max-width: 360px;
-    }
-
-    .tips-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #52525b;
-      margin-bottom: 12px;
-      font-weight: 500;
-    }
-
-    .tips ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .tips li {
-      font-size: 14px;
-      color: #a1a1aa;
-      padding: 6px 0;
-      padding-left: 20px;
-      position: relative;
-      line-height: 1.5;
-    }
-
-    .tips li::before {
-      content: '›';
-      position: absolute;
-      left: 4px;
-      color: #3f3f46;
-      font-weight: bold;
-    }
-
-    .actions {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-    }
-
-    .btn {
-      padding: 9px 20px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.05);
-      color: #e4e4e7;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      font-family: inherit;
-      outline: none;
-    }
-
-    .btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.15);
-    }
-
-    .btn:active {
-      transform: scale(0.97);
-    }
-
-    .btn-primary {
-      background: rgba(59, 130, 246, 0.15);
-      border-color: rgba(59, 130, 246, 0.3);
-      color: #93c5fd;
-    }
-
-    .btn-primary:hover {
-      background: rgba(59, 130, 246, 0.25);
-      border-color: rgba(59, 130, 246, 0.4);
-    }
-
-    .error-code {
-      margin-top: 32px;
-      font-size: 11px;
-      color: #3f3f46;
-      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
-    </div>
-
-    <h1>${info.title}</h1>
-
-    ${failedUrl.startsWith('data:') ? '' : `<div class="url">${displayUrl}</div>`}
-
-    <div class="tips">
-      <div class="tips-label">Things to try</div>
-      <ul>
-        ${tipsHtml}
-      </ul>
-    </div>
-
-    <div class="actions">
-      <button class="btn" id="awrit-back">Go Back</button>
-      <button class="btn" id="awrit-external">Open in Browser</button>
-      <button class="btn btn-primary" id="awrit-retry">Retry</button>
-    </div>
-
-    <div class="error-code">${errorDescription} (${errorCode})</div>
-  </div>
-  <script>
-    (function () {
-      var url = ${JSON.stringify(failedUrl)};
-      function goBack() {
-        if (window.awrit && window.awrit.goBack) window.awrit.goBack();
-      }
-      function openExternal() {
-        if (window.awrit && window.awrit.openExternal) window.awrit.openExternal(url);
-      }
-      function retry() {
-        location.href = url;
-      }
-      var back = document.getElementById('awrit-back');
-      var ext = document.getElementById('awrit-external');
-      var retryButton = document.getElementById('awrit-retry');
-      if (back) back.onclick = goBack;
-      if (ext) ext.onclick = openExternal;
-      if (retryButton) retryButton.onclick = retry;
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { e.preventDefault(); goBack(); }
-      });
-      // Auto-focus so Enter/Esc work without a click
-      if (back) back.focus();
-    })();
-  </script>
-</body>
-</html>`;
+  return recoveryPage(info.title, info.message, failedUrl, `${errorDescription} (${errorCode})`);
 }
 
-/**
- * Generates an HTML page for renderer crashes.
- */
 export function generateCrashPage(details: {
   reason: string;
   exitCode: number;
   failedUrl: string;
 }): string {
+  return recoveryPage(
+    'Page crashed',
+    'Reload to continue.',
+    details.failedUrl,
+    `${details.reason} (exit ${details.exitCode})`,
+  );
+}
+
+function recoveryPage(
+  title: string,
+  message: string,
+  failedUrl: string,
+  diagnostics: string,
+): string {
+  const canOpenExternal = /^https?:\/\//i.test(failedUrl);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Page Crashed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #0a0a0b;
-      color: #e4e4e7;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .container {
-      max-width: 420px;
-      width: 90%;
-      text-align: center;
-      padding: 40px 32px;
-    }
-    .icon {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 24px;
-      border-radius: 50%;
-      background: rgba(245, 158, 11, 0.1);
-      border: 1px solid rgba(245, 158, 11, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-    }
-    h1 {
-      font-size: 22px;
-      font-weight: 600;
-      color: #fafafa;
-      margin-bottom: 12px;
-    }
-    p {
-      font-size: 14px;
-      color: #a1a1aa;
-      margin-bottom: 28px;
-      line-height: 1.6;
-    }
-    .actions {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    .btn {
-      padding: 9px 20px;
-      border-radius: 8px;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      background: rgba(59, 130, 246, 0.15);
-      color: #93c5fd;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      font-family: inherit;
-    }
-    .btn:hover {
-      background: rgba(59, 130, 246, 0.25);
-    }
-    .error-code {
-      margin-top: 24px;
-      font-size: 11px;
-      color: #3f3f46;
-      font-family: monospace;
-    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #1c1b22; color: #fbfbfe;
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 480px); padding: 24px 0; }
+    .icon { width: 28px; height: 28px; color: #adadb8; margin-bottom: 16px; }
+    h1 { font-size: 24px; line-height: 1.3; font-weight: 600; margin: 0 0 12px; }
+    p { color: #adadb8; margin: 0 0 20px; }
+    .url { overflow-wrap: anywhere; font-size: 13px; margin-bottom: 24px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { font: inherit; font-size: 13px; min-height: 36px; padding: 6px 12px;
+      border: 1px solid #646371; border-radius: 8px; background: transparent;
+      color: #fbfbfe; cursor: pointer; }
+    button:hover { background: #2b2a33; }
+    .primary { color: #1c1b22; background: #fbfbfe; border-color: #fbfbfe; }
+    .primary:hover { background: #dcdce5; border-color: #dcdce5; }
+    button:focus-visible, summary:focus-visible { outline: 2px solid #9bc1ff; outline-offset: 2px; }
+    details { margin-top: 28px; color: #adadb8; font-size: 13px; overflow-wrap: anywhere; }
+    summary { cursor: pointer; width: fit-content; }
+    code { display: block; margin-top: 12px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="icon">💥</div>
-    <h1>Page Crashed</h1>
-    <p>Something went wrong and this page couldn't continue running. This is usually temporary.</p>
+  <main>
+    <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/>
+    </svg>
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+    ${failedUrl.startsWith('data:') ? '' : `<p class="url">${escapeHtml(failedUrl)}</p>`}
     <div class="actions">
-      <button class="btn" id="awrit-back">Go Back</button>
-      <button class="btn" id="awrit-external">Open in Browser</button>
-      <button class="btn btn-primary" id="awrit-retry">Reload Page</button>
+      <button class="primary" id="awrit-retry">Retry</button>
+      <button id="awrit-back">Go Back</button>
+      ${canOpenExternal ? '<button id="awrit-external">Open in Browser</button>' : ''}
     </div>
-    <div class="error-code">${details.reason} (exit ${details.exitCode})</div>
-  </div>
+    <details><summary>Details</summary><code>${escapeHtml(diagnostics)}</code></details>
+  </main>
   <script>
     (function () {
-      var url = ${JSON.stringify(details.failedUrl)};
+      var url = ${scriptString(failedUrl)};
       function goBack() {
         if (window.awrit && window.awrit.goBack) window.awrit.goBack();
-      }
-      function openExternal() {
-        if (window.awrit && window.awrit.openExternal) window.awrit.openExternal(url);
-      }
-      function retry() {
-        location.href = url;
       }
       var back = document.getElementById('awrit-back');
       var ext = document.getElementById('awrit-external');
       var retryButton = document.getElementById('awrit-retry');
-      if (back) back.onclick = goBack;
-      if (ext) ext.onclick = openExternal;
-      if (retryButton) retryButton.onclick = retry;
+      back.onclick = goBack;
+      if (ext) ext.onclick = function () {
+        if (window.awrit && window.awrit.openExternal) window.awrit.openExternal(url);
+      };
+      retryButton.onclick = function () {
+        if (window.awrit && window.awrit.retry) window.awrit.retry();
+        else location.href = url;
+      };
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); goBack(); }
       });
-      if (back) back.focus();
+      retryButton.focus();
     })();
   </script>
 </body>
