@@ -7,7 +7,7 @@
   "license": "BSD-3-Clause",
   "homepage": "https://github.com/chase/awrit",
   "engines": {
-    "node": ">=22.11.0"
+    "node": ">=22.12.0"
   },
   "workspaces": ["src/runner"],
   "scripts": {
@@ -19,12 +19,13 @@
     "input-test": "bun run ./src/tty/inputTest.ts",
     "gfx-test": "bun run ./src/tty/graphicsTest.ts",
     "bump-crossterm": "git subtree pull --prefix=awrit-native-rs/crates/crossterm --squash https://github.com/crossterm-rs/crossterm master",
-    "typecheck": "tsc --noEmit --skipLibCheck"
+    "typecheck": "tsc --noEmit --skipLibCheck && tsc --noEmit -p src/toolbar",
+    "verify": "bun run typecheck && bun run lint && bun test"
   },
   "dependencies": {
+    "@toon-format/toon": "4.4.0",
     "awrit-native-rs": "./awrit-native-rs",
-    "electron": "^37.3.1",
-    "electron-chrome-context-menu": "^1.1.0",
+    "electron": "45.2.3",
     "electron-chrome-extensions": "^4.9.0",
     "electron-chrome-web-store": "^0.13.0"
   },
