@@ -1,0 +1,58 @@
+#!/bin/sh
+# Resolve the installed launcher, including relative PATH symlinks.
+launcher=$0
+case "$launcher" in */*) ;; *) launcher=$(command -v "$launcher") ;; esac
+while [ -L "$launcher" ]; do
+  dir=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd) || exit 1
+  target=$(readlink "$launcher") || exit 1
+  case "$target" in /*) launcher=$target ;; *) launcher=$dir/$target ;; esac
+done
+bin=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd) || exit 1
+app=$bin/../lib/awrit
+app=$(CDPATH= cd -P -- "$app" && pwd) || exit 1
+node=$app/runtime/node/bin/node
+if [ ! -x "$node" ]; then
+  printf '%s\n' 'Awrit installation is incomplete: private Node runtime missing.' >&2
+  exit 1
+fi
+export AWRIT_APP_ROOT="$app"
+export AWRIT_CONTAINERFILE="${AWRIT_CONTAINERFILE:-$app/containers/android-emulator/Containerfile}"
+export AWRIT_LAUNCHER="$bin/awrit"
+export AWRIT_OWNER_ENTRY="$app/dist/browserOwner/main.js"
+export AWRIT_CAPTURE_ENTRY="$app/dist/captureMain.js"
+export AWRIT_SKILL_PATH="$app/skills/awrit/SKILL.md"
+export AWRIT_KITTEN_PATH="$app/kittens/awrit.py"
+export AWRIT_PLUGIN_ROOT="$app"
+export AWRIT_CHAT_PLUGIN_DIR="$app/plugins/awrit-chat"
+case "$(uname -s)" in
+  Darwin) export AWRIT_ELECTRON="$app/runtime/electron/Electron.app/Contents/MacOS/Electron" ;;
+  *) export AWRIT_ELECTRON="$app/runtime/electron/electron" ;;
+esac
+# Include private helpers without requiring a global Node installation.
+export PATH="$app/runtime/node/bin:$PATH"
+case "${1-}" in
+  -v|--version) version=$("$node" -p 'require(process.argv[1]).version' "$app/package.json") || exit; printf 'awrit %s\n' "$version"; exit 0 ;;
+  capabilities|inline|show|snapshot|setup|context|overlay|capture|video|tool|status|remote-bridge)
+    exec "$node" "$app/dist/presentation-cli.js" "$@" ;;
+esac
+android_cmd= is_remote= is_view= prev=
+for arg in "$@"; do
+  case "$arg" in
+    device) android_cmd=1 ;;
+    view) [ "$prev" = device ] && is_view=1 ;;
+    -h|--help|--pick) android_cmd=1 ;;
+    --host|--host=*) is_remote=1 ;;
+  esac
+  prev=$arg
+done
+if [ -n "$android_cmd" ]; then
+  if [ -n "$is_view" ] && [ -z "$is_remote" ]; then
+    exec "$node" "$app/dist/terminal/main.js" "$@"
+  fi
+  exec "$node" "$app/dist/android-cli.js" "$@"
+fi
+exec "$node" "$app/dist/terminal/main.js" "$@"
+  fi
+  exec "$node" "$app/dist/android-cli.js" "$@"
+fi
+exec "$node" "$app/dist/terminal/main.js" "$@"
