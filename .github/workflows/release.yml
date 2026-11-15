@@ -1,0 +1,133 @@
+name: Release
+'on':
+  push:
+    branches: [electron]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  # Conventional commits drive the version: fix -> patch, feat -> minor.
+  # Merging the release PR bumps package.json, updates CHANGELOG.md and tags.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+
+  build:
+    needs: version
+    if: needs.version.outputs.created == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04,     target: linux-x64,   node: linux-x64,    ext: tar.xz, appimage: x86_64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64, node: linux-arm64,  ext: tar.xz, appimage: aarch64 }
+          - { os: macos-15,         target: macos-arm64, node: darwin-arm64, ext: tar.gz }
+          - { os: macos-15-intel,   target: macos-x64,   node: darwin-x64,   ext: tar.gz }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: '${{ needs.version.outputs.tag }}' }
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      # Electron 45 fetches its binary lazily; packaging needs it in dist/ now.
+      - run: node node_modules/electron/install.js
+      - run: sh packaging/build-native.sh
+      - name: Fetch Node runtime
+        run: |
+          v=$(node -p process.versions.node); f=node-v$v-${{ matrix.node }}.${{ matrix.ext }}
+          curl -fsSLO https://nodejs.org/dist/v$v/$f
+          curl -fsSLO https://nodejs.org/dist/v$v/SHASUMS256.txt
+          grep " $f\$" SHASUMS256.txt | shasum -a 256 -c -
+          mkdir node-dist && tar -xf $f -C node-dist --strip-components 1
+      - name: Build archive
+        run: |
+          bun packaging/build.ts out/awrit node-dist node_modules/electron/dist
+          out/awrit/bin/awrit --version
+          python3 packaging/verify.py out/awrit --record
+          python3 packaging/archive.py out/awrit awrit-${{ matrix.target }}.tar.gz
+      - name: Build AppImage
+        if: matrix.appimage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          a=${{ matrix.appimage }}
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$a.AppImage
+          curl -fsSL -o runtime https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-$a
+          case $a in
+            x86_64)  sum=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d ;;
+            aarch64) sum=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444 ;;
+          esac
+          echo "$sum  runtime" | shasum -a 256 -c -
+          chmod +x appimagetool
+          python3 packaging/appimage.py out/awrit Awrit-$a.AppImage --appimagetool ./appimagetool --runtime-file runtime
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          gh release upload ${{ needs.version.outputs.tag }} awrit-${{ matrix.target }}.tar.gz* Awrit-*.AppImage* --clobber
+
+  # Updates creator54/homebrew-tap; skipped until the HOMEBREW_TAP_KEY secret
+  # (a write deploy key on the tap) exists.
+  homebrew:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - if: env.TAP_KEY != ''
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'awrit-macos-*.tar.gz.sha256'
+          arm=$(cut -d' ' -f1 awrit-macos-arm64.tar.gz.sha256)
+          x64=$(cut -d' ' -f1 awrit-macos-x64.tar.gz.sha256)
+          url=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o IdentitiesOnly=yes"
+          git clone -q git@github.com:creator54/homebrew-tap.git tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/awrit.rb <<RUBY
+          class Awrit < Formula
+            desc "Chromium in your Kitty terminal, for you and your coding agents"
+            homepage "https://github.com/$GITHUB_REPOSITORY"
+            version "${TAG#v}"
+            license "BSD-3-Clause"
+            depends_on :macos
+            on_arm do
+              url "$url/awrit-macos-arm64.tar.gz"
+              sha256 "$arm"
+            end
+            on_intel do
+              url "$url/awrit-macos-x64.tar.gz"
+              sha256 "$x64"
+            end
+            # Keep the bundled Electron app exactly as built.
+            skip_clean "libexec"
+
+            def install
+              libexec.install Dir["*"]
+              bin.install_symlink libexec/"bin/awrit"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/awrit --version")
+            end
+          end
+          RUBY
+          cd tap
+          git add Formula/awrit.rb
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "awrit ${TAG#v}"
+          git push -q
