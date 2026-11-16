@@ -1,6 +1,7 @@
 #!/bin/sh
-# Awrit installer.
-#   curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh
+# Awrit install/uninstall script.
+#   Install:   curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh
+#   Uninstall: curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh -s -- --uninstall
 #
 # Environment:
 #   AWRIT_VERSION  release tag to install, e.g. v2.1.0 (default: latest)
@@ -49,7 +50,7 @@ sha256_of() {
   fi
 }
 
-fetch() { # url dest label
+fetch() { # url dest
   if [ -t 1 ]; then
     curl -fL --progress-bar "$1" -o "$2" || die "Download failed: $1"
   else
@@ -57,7 +58,37 @@ fetch() { # url dest label
   fi
 }
 
-# --- main --------------------------------------------------------------
+# --- uninstall ---------------------------------------------------------
+do_uninstall() {
+  printf '\n%sAwrit uninstaller%s\n\n' "$B" "$Z"
+  note "prefix  $PREFIX"
+  printf '\n'
+  if [ -x "$BIN/awrit" ]; then
+    step "Removing agent configs"
+    "$BIN/awrit" setup --uninstall --yes 2>/dev/null || true
+  fi
+  step "Removing files"
+  rm -f "$BIN/awrit"
+  rm -rf "$LIB"
+  ok "Removed $LIB and $BIN/awrit"
+  printf '\n%sAwrit uninstalled.%s\n\n' "$G$B" "$Z"
+}
+
+# --- parse args --------------------------------------------------------
+UNINSTALL=
+for arg in "$@"; do
+  case "$arg" in
+    --uninstall) UNINSTALL=1 ;;
+    *) die "Unknown argument: $arg. Usage: install.sh [--uninstall]" ;;
+  esac
+done
+
+if [ -n "$UNINSTALL" ]; then
+  do_uninstall
+  exit 0
+fi
+
+# --- install -----------------------------------------------------------
 need curl
 need tar
 need uname

@@ -83,7 +83,7 @@ const entries = ['browserOwner/main.ts', 'terminal/main.ts', 'remote/androidOwne
 async function build(entrypoints: string[], outdir: string, naming?: string) {
   const result = await Bun.build({
     entrypoints: entrypoints.map(p => join(root, 'src', p)), root: join(root, 'src'),
-    outdir, naming, target: 'node', format: 'cjs', packages: 'external',
+    outdir, naming, target: 'node', format: 'cjs', packages: 'external', external: ['awrit-native-rs'],
     define: { __dirname: '(process.env.AWRIT_APP_ROOT + "/src")' },
   });
   if (!result.success) throw new AggregateError(result.logs, 'Standalone bundle failed');
