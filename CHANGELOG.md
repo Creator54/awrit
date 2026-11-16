@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/Creator54/awrit/compare/v2.2.0...v2.2.1) (2026-11-16)
+
+
+### Fixes
+
+* keep runtime packages external in release bundle ([4352a4c](https://github.com/Creator54/awrit/commit/4352a4c5a4d519c582b476bf600b7a44292f728a))
+
 ## [2.2.0](https://github.com/Creator54/awrit/compare/v2.1.0...v2.2.0) (2026-11-16)
 
 

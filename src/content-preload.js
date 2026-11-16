@@ -102,7 +102,7 @@ document.addEventListener('copy', (event) => {
 try {
   contextBridge.exposeInMainWorld('awrit', {
     isAwrit: true,
-    version: '2.2.0', // x-release-please-version
+    version: '2.2.1', // x-release-please-version
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
