@@ -7,6 +7,7 @@
 #: For Kitty keybinding (kitty.conf):
 #:   map ctrl+shift+b launch --location=split --cwd=current ./awrit
 
+export AWRIT_CALLER_CWD="${AWRIT_CALLER_CWD:-$PWD}"
 cd "$(dirname "$0")"
 
 # Auto-enter nix-shell if available and not already inside one

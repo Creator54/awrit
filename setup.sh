@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+error() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+info() {
+  echo "$*"
+}
+
 BASE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" &>/dev/null && pwd)
 
 BUN_INSTALL_DIR=$BASE_DIR/.bun
