@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
+  native = pkgs.callPackage ./awrit-native-rs/package.nix {};
   electronDeps = with pkgs; [
     glib
     gtk3
@@ -55,6 +56,10 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     bun
     electron
+    android-tools
+    ffmpeg-headless
+    podman
+    fzf
     gsettings-desktop-schemas
     adwaita-icon-theme
   ] ++ electronDeps;
@@ -68,5 +73,5 @@ pkgs.mkShell {
     if [ ! -d "node_modules" ]; then
       bun install 2>/dev/null || true
     fi
-  '';
+  '' + native.devShellHook native;
 }
