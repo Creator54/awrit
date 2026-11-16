@@ -2,7 +2,6 @@ import { OSC } from './escapeCodes';
 import { write } from './output';
 
 const fallbackCursor = 'default';
-let lastCursor = '';
 
 const supportedCursors = new Set([
   'alias',
@@ -42,11 +41,14 @@ const electronSwap: Record<string, string> = {
   hand: 'pointer',
 };
 
-export function updateCursor(_event: any, cursor: string) {
-  let cursor_ = electronSwap[cursor] ?? cursor;
-  cursor_ = supportedCursors.has(cursor_) ? cursor_ : fallbackCursor;
-  if (cursor_ === lastCursor) return;
+export function createCursorUpdater(sink: (data: string) => unknown = write) {
+  let lastCursor = '';
+  return function updateCursor(_event: unknown, cursor: string) {
+    let cursor_ = electronSwap[cursor] ?? cursor;
+    cursor_ = supportedCursors.has(cursor_) ? cursor_ : fallbackCursor;
+    if (cursor_ === lastCursor) return;
 
-  write(OSC`22;${cursor_}`);
-  lastCursor = cursor_;
+    sink(OSC`22;${cursor_}`);
+    lastCursor = cursor_;
+  };
 }

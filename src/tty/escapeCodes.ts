@@ -1,8 +1,5 @@
 type StringLike = string | { toString(): string };
 export const ESC_CODE = '\x1B';
-export const CLEAR_SCROLLBACK = CSI`3J`;
-export const GFX_BLACK_FILL = GFX`f=32,s=1,v=1,B=1;OK`;
-export const OPAQUE_WINDOW = CSI`?1049h`;
 export function ESC(strings: TemplateStringsArray, ...args: StringLike[]) {
   let ret = ESC_CODE;
   for (let n = 0; n < strings.length; n++) {

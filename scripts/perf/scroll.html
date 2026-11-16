@@ -1,0 +1,1 @@
+<body style="margin:0;font:14px monospace"><script>let h="";for(let i=0;i<3000;i++)h+=`<div style="background:hsl(${i*7%360},60%,${30+i%40}%)">line ${i} ${"x".repeat(80)}</div>`;document.body.innerHTML=h;let y=0;setInterval(()=>{y+=40;scrollTo(0,y%60000)},16)</script>

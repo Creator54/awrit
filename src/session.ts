@@ -1,5 +1,7 @@
-import { app, session as ElectronSession, type Session, ipcMain } from 'electron';
-import * as path from 'node:path';
+import { app, session as ElectronSession, type Session, type WebContents, ipcMain } from 'electron';
+import { legacyPartitionExists, profilePartition } from './browserOwner/profile';
+import { downloadsFolder, handleDownloads } from './downloads';
+import { permitsFileSystem } from './folderGrants';
 
 const sessionConfig = {
   profile: null as string | null,
@@ -16,16 +18,44 @@ export function loadSessionConfig(config: { profile?: string | null }) {
  * Sites can detect awrit via window.awrit and use the Secure Auth Bridge
  * to handle authentication in the system browser.
  */
-const pendingPermissions = new Map<number, (allow: boolean) => void>();
+const pendingPermissions = new Map<
+  number,
+  { callback: (allow: boolean) => void; session: Session; sender: number }
+>();
 let nextPermId = 1;
 
-export const sitePermissions = new Map<string, Record<string, boolean>>();
+const permissionsBySession = new WeakMap<Session, Map<string, Record<string, boolean>>>();
+function permissions(session: Session) {
+  let values = permissionsBySession.get(session);
+  if (!values) {
+    values = new Map();
+    permissionsBySession.set(session, values);
+  }
+  return values;
+}
+// Last certificate Chromium verified per host, for the site-info panel. Chromium may
+// reuse a cached verification, so a host can be missing; the panel then omits details.
+const certificatesBySession = new WeakMap<
+  Session,
+  Map<string, { issuer: string; expires: number }>
+>();
 
-function notifyPermissionsChanged(origin: string) {
+function senderSession(sender: WebContents): Session {
+  const { managedViews } = require('./windows');
+  const view = managedViews.find((v: any) => v.toolbar.webContents === sender);
+  if (!view) throw new Error('Unknown permission renderer');
+  return view.content.webContents.session;
+}
+
+function notifyPermissionsChanged(origin: string, session: Session) {
+  const sitePermissions = permissions(session);
   const { managedViews } = require('./windows');
   for (const view of managedViews) {
     try {
-      if (new URL(view.content.webContents.getURL()).origin === origin) {
+      if (
+        view.content.webContents.session === session &&
+        new URL(view.content.webContents.getURL()).origin === origin
+      ) {
         view.toolbar.webContents.send(
           'awrit:site-permissions-changed',
           sitePermissions.get(origin) || {},
@@ -35,8 +65,9 @@ function notifyPermissionsChanged(origin: string) {
   }
 }
 
-ipcMain.handle('awrit:get-site-permissions', (_event, url: string) => {
+ipcMain.handle('awrit:get-site-permissions', (event, url: string) => {
   try {
+    const sitePermissions = permissions(senderSession(event.sender));
     const origin = new URL(url).origin;
     return sitePermissions.get(origin) || {};
   } catch {
@@ -44,31 +75,68 @@ ipcMain.handle('awrit:get-site-permissions', (_event, url: string) => {
   }
 });
 
-ipcMain.on('awrit:revoke-site-permission', (_event, url: string, permission: string) => {
+ipcMain.handle('awrit:get-site-info', async (event, url: string) => {
   try {
-    const origin = new URL(url).origin;
-    const perms = sitePermissions.get(origin);
-    if (perms) {
-      delete perms[permission];
-      notifyPermissionsChanged(origin);
-      // Reload any webContents at this origin to reset Electron's internal permission cache
+    const session = senderSession(event.sender);
+    const { protocol, hostname } = new URL(url);
+    if (protocol !== 'http:' && protocol !== 'https:') return null;
+    const cookies = (await session.cookies.get({ url })).length;
+    return { cookies, certificate: certificatesBySession.get(session)?.get(hostname) ?? null };
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('awrit:clear-site-cookies', async (event, url: string) => {
+  try {
+    const session = senderSession(event.sender);
+    for (const cookie of await session.cookies.get({ url })) {
+      await session.cookies.remove(url, cookie.name);
+    }
+    return (await session.cookies.get({ url })).length;
+  } catch {
+    throw new Error('Could not clear cookies');
+  }
+});
+
+ipcMain.on(
+  'awrit:set-site-permission',
+  (event, url: string, permission: string, choice: 'ask' | 'allow' | 'block') => {
+    try {
+      const session = senderSession(event.sender);
+      const sitePermissions = permissions(session);
+      const origin = new URL(url).origin;
+      const perms = sitePermissions.get(origin) ?? {};
+      const before =
+        perms[permission] === undefined ? 'ask' : perms[permission] ? 'allow' : 'block';
+      const changed = before !== choice;
+      if (choice === 'ask') delete perms[permission];
+      else perms[permission] = choice === 'allow';
+      sitePermissions.set(origin, perms);
+      notifyPermissionsChanged(origin, session);
+      if (!changed) return;
+      // Reload pages at this origin so Electron drops its cached decision.
       const { managedViews } = require('./windows');
       for (const view of managedViews) {
         try {
-          if (new URL(view.content.webContents.getURL()).origin === origin) {
+          if (
+            view.content.webContents.session === session &&
+            new URL(view.content.webContents.getURL()).origin === origin
+          ) {
             view.content.webContents.reload();
           }
         } catch {}
       }
-    }
-  } catch {}
-});
+    } catch {}
+  },
+);
 
 ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission, mediaTypes }) => {
-  const cb = pendingPermissions.get(id);
-  if (cb) {
-    cb(allowed);
-    pendingPermissions.delete(id);
+  const pending = pendingPermissions.get(id);
+  if (pending && pending.sender === event.sender.id) {
+    const session = pending.session;
+    const sitePermissions = permissions(session);
+    pending.callback(allowed);
 
     // Save to persistent map
     try {
@@ -81,7 +149,7 @@ ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission
         // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
         sitePermissions.get(origin)![permission] = allowed;
       }
-      notifyPermissionsChanged(origin);
+      notifyPermissionsChanged(origin, session);
     } catch {}
   }
   const { managedViews } = require('./windows');
@@ -98,21 +166,14 @@ ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission
   }
 });
 
-export const sessionPromise = new Promise<Session>((resolve) => {
-  app.whenReady().then(() => {
-    let session: Session;
-
-    if (sessionConfig.profile) {
-      const profilePath = path.resolve(sessionConfig.profile);
-      const pathHash = Math.abs(
-        profilePath.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 100000,
-      );
-      const partitionName = `persist:awrit-profile-${pathHash}`;
-      session = ElectronSession.fromPartition(partitionName);
-    } else {
-      session = ElectronSession.fromPartition('persist:awrit');
-    }
-
+const sessions = new Map<string, Promise<Session>>();
+export function getProfileSession(profile: string | null): Promise<Session> {
+  const partition = profilePartition(profile, legacyPartitionExists(app.getPath('userData')));
+  const existing = sessions.get(partition);
+  if (existing) return existing;
+  const promise = app.whenReady().then(() => {
+    const session = ElectronSession.fromPartition(partition);
+    const sitePermissions = permissions(session);
     // Clean up the User Agent to be honest but professional
     const rawUserAgent = session.getUserAgent();
     const cleanUA = rawUserAgent
@@ -123,14 +184,28 @@ export const sessionPromise = new Promise<Session>((resolve) => {
 
     // Disable spellchecker to save memory (Hunspell dictionaries ~10MB)
     session.setSpellCheckerEnabled(false);
+    handleDownloads(session, downloadsFolder(app.getPath('downloads')));
+
+    // Observe only: -3 keeps Chromium's own verdict.
+    const certificates = new Map<string, { issuer: string; expires: number }>();
+    certificatesBySession.set(session, certificates);
+    session.setCertificateVerifyProc((request, callback) => {
+      certificates.set(request.hostname, {
+        issuer: request.certificate.issuerName,
+        expires: request.certificate.validExpiry,
+      });
+      callback(-3);
+    });
 
     // Auto-allow media permissions for offscreen rendering
-    session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
-      const autoAllow = ['fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
+    session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+      const autoAllow = ['fullscreen', 'clipboard-sanitized-write'];
       if (autoAllow.includes(permission)) {
         return true;
       }
-
+      if (permission === 'fileSystem') {
+        return permitsFileSystem(requestingOrigin, details);
+      }
       try {
         const origin = new URL(requestingOrigin).origin;
         const perms = sitePermissions.get(origin);
@@ -145,12 +220,7 @@ export const sessionPromise = new Promise<Session>((resolve) => {
     });
 
     session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-      const autoAllow = [
-        'mediaDevice',
-        'fullscreen',
-        'clipboard-read',
-        'clipboard-sanitized-write',
-      ];
+      const autoAllow = ['mediaDevice', 'fullscreen', 'clipboard-sanitized-write'];
       const promptPermissions = ['media', 'notifications', 'geolocation'];
 
       if (autoAllow.includes(permission)) {
@@ -167,10 +237,34 @@ export const sessionPromise = new Promise<Session>((resolve) => {
         } catch {}
 
         const id = nextPermId++;
-        pendingPermissions.set(id, callback);
         const { managedViews } = require('./windows');
         const view = managedViews.find((v: any) => v.content.webContents === webContents);
         if (view) {
+          const toolbarContents: WebContents = view.toolbar.webContents;
+          const finish = (allowed: boolean) => {
+            if (!pendingPermissions.delete(id)) return;
+            view.permissionPending = [...pendingPermissions.values()].some(
+              (p) => p.sender === toolbarContents.id,
+            );
+            webContents.removeListener('destroyed', deny);
+            toolbarContents.removeListener('destroyed', deny);
+            callback(allowed);
+          };
+          const deny = () => {
+            try {
+              finish(false);
+            } catch {
+              /* The requesting renderer may already be gone. */
+            }
+          };
+          // The toolbar shows one prompt at a time; answer an earlier one (without remembering it) so its page does not hang.
+          for (const [, earlier] of [...pendingPermissions]) {
+            if (earlier.sender === toolbarContents.id) earlier.callback(false);
+          }
+          pendingPermissions.set(id, { callback: finish, session, sender: toolbarContents.id });
+          webContents.once('destroyed', deny);
+          toolbarContents.once('destroyed', deny);
+          view.permissionPending = true;
           view.toolbar.webContents.send('toolbar:permission-request', {
             id,
             permission,
@@ -202,6 +296,18 @@ export const sessionPromise = new Promise<Session>((resolve) => {
       callback({ responseHeaders: details.responseHeaders });
     });
 
-    resolve(session);
+    return session;
   });
-});
+  sessions.set(partition, promise);
+  return promise;
+}
+
+export const sessionPromise = app.whenReady().then(() => getProfileSession(sessionConfig.profile));
+
+export async function flushProfileSessions(): Promise<void> {
+  for (const pending of sessions.values()) {
+    const session = await pending;
+    session.flushStorageData();
+    await session.cookies.flushStore();
+  }
+}
