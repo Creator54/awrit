@@ -1,55 +1,73 @@
 # Awrit ![NixOS](https://img.shields.io/badge/-NixOS-5277C3.svg?style=flat-square&logo=nixos&logoColor=white)
 
-> Personal fork of [`chase/awrit`](https://github.com/chase/awrit). See upstream for full documentation.
->
-> *Note: Force Push Ahead.*
+> Fork of [`chase/awrit`](https://github.com/chase/awrit): Chromium in your [Kitty](https://sw.kovidgoyal.net/kitty/) terminal, which coding agents can see and drive.
 
-## Features & Roadmap
-- [x] Built-in Google Sign-In support (GIS and direct sign-in)
-- [x] 2-finger horizontal swipe for back/forward history navigation
-- [x] Vim-style keyboard bindings for page navigation
-- [x] Site-wise context zoom control (`Alt+-` / `Alt+=` / `Ctrl+0`)
-- [x] Zen-inspired Omnibox with intelligent search suggestions
-- [x] Interactive site permissions overlay via omnibox (camera, mic, geolocation)
-- [x] Multi-window handling support
-- [x] Bidirectional system clipboard interoperability (OSC 52 + bracketed paste)
-- [x] Proper standard XDG storage paths for data and logs (`~/.local/share/awrit`)
-- [x] Find in page functionality (`Alt+/`)
-- [x] Zero-latency page swaps ("Flash Killer")
-- [x] Website click-to-copy and double/triple-click text selection
-- [x] Custom error pages for network failures and crashes
-- [x] Link hover status indicators
-- [x] In-app DevTools toggling (`F12` / `Ctrl+Shift+I`)
-- [x] Chrome DevTools Protocol (CDP) support (`--remote-debugging-port=9222`)
-- [x] Aggressive resource limits (30fps caps, disabled spellchecker)
-- [x] Tear-free synchronized terminal output (2026 mode)
-- [x] High-performance rendering (BGRA->RGBA dirty rects, SIMD pass)
-- [ ] Browser tabs support
-- [ ] Settings page UI
-- [ ] History navigation and cleanup
+## Features
+- [x] Google Sign-In (GIS and direct sign-in)
+- [x] 2-finger horizontal swipe for back/forward
+- [x] Vim-style keyboard navigation
+- [x] Per-site zoom (`Alt+-` / `Alt+=` / `Ctrl+0`)
+- [x] Omnibox with search suggestions
+- [x] Site permissions prompt (camera, mic, location)
+- [x] Tabs and multiple windows (`Alt+T`)
+- [x] System clipboard both ways (OSC 52 + bracketed paste)
+- [x] XDG data and log paths (`~/.local/share/awrit`)
+- [x] Find in page (`Alt+/`)
+- [x] Click-to-copy and double/triple-click selection
+- [x] Error pages for network failures and crashes
+- [x] Link hover status
+- [x] DevTools (`F12` / `Ctrl+Shift+I`) and CDP (`--debug-port=9222`, off by default)
+- [x] Shared-memory, dirty-rect rendering with SIMD colour conversion
+- [x] Tear-free synchronized output (mode 2026)
+- [x] Agent browser tools: read, snapshot, click, type, scroll (`awrit tool list`)
+- [x] Design mode: point at page elements and send notes to the agent (`Alt+D`)
+- [x] Android via ADB (`awrit device --help`); managed emulators need Linux x86_64 with KVM
+- [x] Remote browser over SSH, experimental (`awrit show URL --host HOST`)
+- [x] Agent setup for Claude Code, Codex, OpenCode, Pi and more (`awrit setup`)
+- [ ] Settings page
+- [ ] History management
 - [ ] Cookies and site data management
 
 ![awrit screenshot](assets/screenshot.jpg)
 
+## Requirements
+
+- Linux or macOS (x86_64, arm64)
+- [Kitty](https://sw.kovidgoyal.net/kitty/)
+
 ## Install
 
-**Nix (Recommended):**
 ```bash
-# Run instantly without installing
-nix run github:creator54/awrit -- https://github.com/creator54/awrit
-
-# Or install to your user profile
-nix profile install github:creator54/awrit
-
-# For local development
-git clone https://github.com/creator54/awrit.git && cd awrit
-nix run .
+curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh
 ```
 
-**Standard Linux:**
+With Nix:
+
+```bash
+nix profile install github:creator54/awrit
+```
+
+From source:
+
 ```bash
 git clone https://github.com/creator54/awrit.git
-cd awrit
-./setup.sh
-./awrit
+cd awrit && nix run .
 ```
+
+## Usage
+
+```bash
+awrit https://example.com   # browse in the terminal
+awrit setup                 # connect your coding agents (--uninstall to remove)
+awrit show URL              # open a page beside the chat
+awrit capture --json        # screenshot the page or device
+awrit overlay               # live view over the chat; Escape returns
+```
+
+Agents control the browser through a local Unix socket (`awrit tool`). CDP is optional via `--debug-port`.
+
+`awrit --help` lists all commands.
+
+## Contributing
+
+See [AGENTS.md](AGENTS.md).
