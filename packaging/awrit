@@ -16,6 +16,7 @@ if [ ! -x "$node" ]; then
   exit 1
 fi
 export AWRIT_APP_ROOT="$app"
+export AWRIT_SRC_DIR="$app/src"
 export AWRIT_CONTAINERFILE="${AWRIT_CONTAINERFILE:-$app/containers/android-emulator/Containerfile}"
 export AWRIT_LAUNCHER="$bin/awrit"
 export AWRIT_OWNER_ENTRY="$app/dist/browserOwner/main.js"

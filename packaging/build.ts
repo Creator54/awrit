@@ -78,15 +78,23 @@ function copyDependency(name: string, from: string) {
   }
   for (const dependency of Object.keys(manifest.dependencies ?? {})) copyDependency(dependency, directory);
 }
-for (const name of ['awrit-native-rs', '@toon-format/toon', 'electron-chrome-extensions', 'electron-chrome-web-store']) copyDependency(name, root);
+const runtimePackages = Object.keys(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).dependencies);
+for (const name of runtimePackages.filter(name => name !== 'electron')) copyDependency(name, root);
 const entries = ['browserOwner/main.ts', 'terminal/main.ts', 'remote/androidOwner.ts', 'remote/pickerMain.ts', 'preload.js', 'content-preload.js'];
 async function build(entrypoints: string[], outdir: string, naming?: string) {
   const result = await Bun.build({
     entrypoints: entrypoints.map(p => join(root, 'src', p)), root: join(root, 'src'),
-    outdir, naming, target: 'node', format: 'cjs', packages: 'external', external: ['awrit-native-rs'],
-    define: { __dirname: '(process.env.AWRIT_APP_ROOT + "/src")' },
+    // Name runtime packages explicitly: Bun 1.4 ignores packages:'external' and inlines them.
+    outdir, naming, target: 'node', format: 'cjs', external: runtimePackages,
+    // Bun inserts a non-identifier define value as a string literal, so point at a launcher-set variable.
+    define: { __dirname: 'process.env.AWRIT_SRC_DIR' },
   });
   if (!result.success) throw new AggregateError(result.logs, 'Standalone bundle failed');
+  // An inlined package carries absolute build paths; a broken define leaves a quoted expression.
+  for (const output of result.outputs) {
+    const code = await output.text();
+    if (code.includes(root) || code.includes("'process.env.")) throw new Error(`Bundle inlined build-time paths: ${output.path}`);
+  }
 }
 await build(entries, join(app, 'dist'));
 for (const [entry, name] of [['presentation/main.ts', 'presentation-cli.js'], ['presentation/captureMain.ts', 'captureMain.js'], ['adb/androidMain.ts', 'android-cli.js']]) {
