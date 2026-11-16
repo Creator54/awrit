@@ -29,7 +29,7 @@ jobs:
         include:
           - { os: ubuntu-24.04,     target: linux-x64,   node: linux-x64,    ext: tar.xz }
           - { os: ubuntu-24.04-arm, target: linux-arm64, node: linux-arm64,  ext: tar.xz }
-          - { os: macos-15,         target: macos-arm64, node: darwin-arm64, ext: tar.gz }
+          - { os: macos-latest,     target: macos-arm64, node: darwin-arm64, ext: tar.gz }
           - { os: macos-15-intel,   target: macos-x64,   node: darwin-x64,   ext: tar.gz }
     runs-on: ${{ matrix.os }}
     defaults:
