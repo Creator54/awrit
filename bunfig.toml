@@ -1,0 +1,3 @@
+[test]
+# `result` is the Nix build symlink (bun would rerun every suite from the store); plugin tests run via `claude plugin test`.
+pathIgnorePatterns = ["result", "node_modules", "plugins"]
