@@ -1,0 +1,77 @@
+name: Release
+'on':
+  push:
+    branches: [electron]
+  # Builds and tests the archives without releasing; download them from the run.
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  # Conventional commits drive the version: fix -> patch, feat -> minor.
+  # Merging the release PR bumps package.json, updates CHANGELOG.md and tags.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@v5
+
+  build:
+    needs: version
+    if: needs.version.outputs.created == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04,     target: linux-x64,   node: linux-x64,    ext: tar.xz }
+          - { os: ubuntu-24.04-arm, target: linux-arm64, node: linux-arm64,  ext: tar.xz }
+          - { os: macos-15,         target: macos-arm64, node: darwin-arm64, ext: tar.gz }
+          - { os: macos-15-intel,   target: macos-x64,   node: darwin-x64,   ext: tar.gz }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: '${{ needs.version.outputs.tag || github.sha }}' }
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      # Electron 45 fetches its binary lazily; packaging needs it in dist/ now.
+      - run: node node_modules/electron/install.js
+      - run: sh packaging/build-native.sh
+      - name: Fetch Node runtime
+        run: |
+          v=$(node -p process.versions.node); f=node-v$v-${{ matrix.node }}.${{ matrix.ext }}
+          curl -fsSLO https://nodejs.org/dist/v$v/$f
+          curl -fsSLO https://nodejs.org/dist/v$v/SHASUMS256.txt
+          grep " $f\$" SHASUMS256.txt | shasum -a 256 -c -
+          mkdir node-dist && tar -xf $f -C node-dist --strip-components 1
+      - name: Build archive
+        run: |
+          bun packaging/build.ts out/awrit node-dist node_modules/electron/dist
+          out/awrit/bin/awrit --version
+          python3 packaging/verify.py out/awrit --record
+          python3 packaging/archive.py out/awrit awrit-${{ matrix.target }}.tar.gz
+      - name: Test the archive as shipped
+        run: |
+          mkdir unpacked && tar -xzf awrit-${{ matrix.target }}.tar.gz -C unpacked
+          sh packaging/smoke.sh unpacked/awrit/bin/awrit
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: awrit-${{ matrix.target }}
+          path: |
+            awrit-${{ matrix.target }}.tar.gz*
+      - if: needs.version.outputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          gh release upload ${{ needs.version.outputs.tag }} awrit-${{ matrix.target }}.tar.gz* --clobber
