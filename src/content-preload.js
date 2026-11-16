@@ -6,24 +6,7 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
     webFrame.executeJavaScriptInIsolatedWorld(0, [{
       code: `
         (function() {
-          // 1. Intercept navigator.clipboard.writeText
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            const originalWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
-            navigator.clipboard.writeText = async (text) => {
-              window.postMessage({ type: 'awrit:copy', text: text }, '*');
-              return originalWriteText(text);
-            };
-          }
-
-          // 2. Intercept standard copy events (ctrl+c, context menu, etc)
-          document.addEventListener('copy', (e) => {
-            const text = window.getSelection().toString();
-            if (text) {
-              window.postMessage({ type: 'awrit:copy', text: text }, '*');
-            }
-          }, true);
-
-          // 3. Polyfill visual drag image for OSR
+          // Polyfill visual drag image for OSR
           let dragClone = null;
           let dragOffsetX = 0;
           let dragOffsetY = 0;
@@ -95,12 +78,13 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
     console.error('[Awrit Preload] Failed to inject main world scripts:', e);
   }
 
-// Listen for clipboard messages from the main world
-window.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'awrit:copy' && typeof event.data.text === 'string') {
-    ipcRenderer.send('awrit:copy-to-clipboard', event.data.text);
-  }
-});
+// Keep terminal clipboard synchronization in the isolated world. Page messages
+// and synthetic copy events must not become privileged clipboard writes.
+document.addEventListener('copy', (event) => {
+  if (!event.isTrusted) return;
+  const text = window.getSelection()?.toString();
+  if (text) ipcRenderer.send('awrit:copy-to-clipboard', text);
+}, true);
 
 /**
  * awrit Secure Auth Bridge (Generic Solution)
@@ -118,12 +102,19 @@ window.addEventListener('message', (event) => {
 try {
   contextBridge.exposeInMainWorld('awrit', {
     isAwrit: true,
-    version: '2.0.3',
+    version: '2.0.5', // x-release-please-version
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
     goBack: () => {
       ipcRenderer.send('awrit:go-back');
+    },
+    retry: () => {
+      ipcRenderer.send('awrit:retry');
+    },
+    pickFolder: () => ipcRenderer.invoke('awrit:pick-folder'),
+    setAdbControlsVisible: (visible) => {
+      ipcRenderer.send('awrit:adb-controls-visible', !!visible);
     },
   });
 
@@ -155,12 +146,3 @@ window.addEventListener('focusin', updateFocus);
 window.addEventListener('focusout', updateFocus);
 window.addEventListener('load', updateFocus);
 setInterval(updateFocus, 1000);
-
-// Force dark mode CSS (standard UX improvement, not "faking" identity)
-if (document.documentElement) {
-  const style = document.createElement('style');
-  style.id = 'awrit-base-theme';
-  style.innerHTML = 'html { color-scheme: dark !important; }';
-  document.documentElement.appendChild(style);
-}
-

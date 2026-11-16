@@ -27,6 +27,24 @@ pub struct DirtyRect {
   pub height: u32,
 }
 
+fn new_segment_name() -> (String, String) {
+  let timestamp = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap()
+    .as_nanos();
+
+  // Convert timestamp to hex, keeping the least significant (most unique) digits
+  let hex = format!("{:x}", timestamp);
+  let significant_part = if hex.len() > 23 {
+    &hex[hex.len() - 23..]
+  } else {
+    &hex
+  };
+  let name = format!("/awrit_{}", significant_part);
+  let name_base64 = BASE64.encode(name.as_bytes());
+  (name, name_base64)
+}
+
 #[napi(custom_finalize)]
 pub struct ShmGraphicBuffer {
   name: String,
@@ -43,8 +61,8 @@ impl ObjectFinalize for ShmGraphicBuffer {
         munmap(ptr, self.size as usize).ok();
       }
     }
-    // fd is automatically closed if we store it as a file or similar, 
-    // but here we store it as RawFd. 
+    // fd is automatically closed if we store it as a file or similar,
+    // but here we store it as RawFd.
     if let Some(fd) = self.fd {
       unsafe {
         nix::unistd::close(fd).ok();
@@ -61,20 +79,7 @@ impl ShmGraphicBuffer {
   /// Creates a new shared memory buffer with a unique name with the provided size
   #[napi(constructor)]
   pub fn new(size: u32) -> Self {
-    let timestamp = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .unwrap()
-      .as_nanos();
-
-    // Convert timestamp to hex, keeping the least significant (most unique) digits
-    let hex = format!("{:x}", timestamp);
-    let significant_part = if hex.len() > 23 {
-      &hex[hex.len() - 23..]
-    } else {
-      &hex
-    };
-    let name = format!("/awrit_{}", significant_part);
-    let name_base64 = BASE64.encode(name.as_bytes());
+    let (name, name_base64) = new_segment_name();
 
     Self {
       name,
@@ -85,36 +90,67 @@ impl ShmGraphicBuffer {
     }
   }
 
-  fn ensure_mapped(&mut self) -> napi::Result<*mut u8> {
-    if let Some(ptr) = self.ptr {
-      return Ok(ptr.as_ptr() as *mut u8);
-    }
-
-    let fd = shm_open(
-      self.name(),
-      OFlag::O_CREAT | OFlag::O_RDWR,
-      Mode::S_IRUSR | Mode::S_IWUSR,
-    )
-    .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
-
-    ftruncate(&fd, self.size as i64)
-      .map_err(|e| napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e)))?;
-
-    let size = NonZeroUsize::new(self.size as usize)
-      .ok_or_else(|| napi::Error::from_reason("Size must be non-zero"))?;
-
-    let ptr = unsafe {
-      mmap(
-        None,
-        size,
-        ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-        MapFlags::MAP_SHARED,
-        &fd,
-        0,
+  fn ensure_mapped(&mut self, preserve_previous: bool) -> napi::Result<*mut u8> {
+    // Each transfer needs a fresh name: Kitty can unlink a previous transfer
+    // after a later write, and must still be able to open both images.
+    let (name, name_base64) = new_segment_name();
+    let mapping = (|| {
+      let fd = shm_open(
+        name.as_str(),
+        OFlag::O_CREAT | OFlag::O_RDWR,
+        Mode::S_IRUSR | Mode::S_IWUSR,
       )
-      .map_err(|e| napi::Error::from_reason(format!("Failed to mmap shared memory: {}", e)))?
+      .map_err(|e| napi::Error::from_reason(format!("Failed to open shared memory: {}", e)))?;
+
+      ftruncate(&fd, self.size as i64).map_err(|e| {
+        napi::Error::from_reason(format!("Failed to truncate shared memory: {}", e))
+      })?;
+
+      let size = NonZeroUsize::new(self.size as usize)
+        .ok_or_else(|| napi::Error::from_reason("Size must be non-zero"))?;
+
+      let ptr = unsafe {
+        mmap(
+          None,
+          size,
+          ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+          MapFlags::MAP_SHARED,
+          &fd,
+          0,
+        )
+        .map_err(|e| napi::Error::from_reason(format!("Failed to mmap shared memory: {}", e)))?
+      };
+      Ok((fd, ptr))
+    })();
+    let (fd, ptr) = match mapping {
+      Ok(mapping) => mapping,
+      Err(error) => {
+        let _ = shm_unlink(name.as_str());
+        return Err(error);
+      }
     };
 
+    if let Some(previous) = self.ptr {
+      unsafe {
+        // A recreated segment starts empty; partial updates need the old pixels.
+        if preserve_previous {
+          std::ptr::copy_nonoverlapping(
+            previous.as_ptr() as *const u8,
+            ptr.as_ptr() as *mut u8,
+            self.size as usize,
+          );
+        }
+        munmap(previous, self.size as usize).ok();
+      }
+    }
+    if let Some(previous) = self.fd.take() {
+      unsafe {
+        nix::unistd::close(previous).ok();
+      }
+    }
+
+    self.name = name;
+    self.name_base64 = name_base64;
     self.fd = Some(fd.into_raw_fd());
     self.ptr = Some(ptr);
 
@@ -135,7 +171,10 @@ impl ShmGraphicBuffer {
   /// Creates and truncates the shared memory segment to the specified size, filling it with zeros
   #[napi]
   pub fn write_empty(&mut self) -> napi::Result<()> {
-    self.ensure_mapped()?;
+    let ptr = self.ensure_mapped(false)?;
+    unsafe {
+      std::ptr::write_bytes(ptr, 0, self.size as usize);
+    }
     Ok(())
   }
 
@@ -147,7 +186,7 @@ impl ShmGraphicBuffer {
     image_width: u32,
     dirty_rect: Option<DirtyRect>,
   ) -> napi::Result<()> {
-    let dst_ptr = self.ensure_mapped()?;
+    let dst_ptr = self.ensure_mapped(dirty_rect.is_some())?;
     let src_slice = buffer.as_ref();
     let dst_slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr, self.size as usize) };
 

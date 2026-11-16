@@ -1,0 +1,44 @@
+# Android emulator image for `awrit device`. Built locally, never published:
+# the Android SDK license restricts redistribution.
+#
+# Nothing is downloaded or accepted implicitly. The build fails unless you pass:
+#   --build-arg ACCEPT_ANDROID_SDK_LICENSE=yes
+#   --build-arg CMDLINE_TOOLS_URL=<official commandlinetools-linux zip URL>
+#   --build-arg CMDLINE_TOOLS_SHA256=<sha256 of that zip, from developer.android.com>
+# System images are NOT baked in; install them into a mounted volume with sdkmanager.
+#
+# Base pinned by digest (debian:bookworm-slim at pin time). Update by re-resolving the tag.
+FROM docker.io/library/debian@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+
+ARG ACCEPT_ANDROID_SDK_LICENSE=no
+ARG CMDLINE_TOOLS_URL=
+ARG CMDLINE_TOOLS_SHA256=
+
+RUN test "$ACCEPT_ANDROID_SDK_LICENSE" = "yes" \
+    || { echo "Refusing to build: pass --build-arg ACCEPT_ANDROID_SDK_LICENSE=yes after reading the Android SDK license." >&2; exit 1; } \
+ && test -n "$CMDLINE_TOOLS_URL" && test -n "$CMDLINE_TOOLS_SHA256" \
+    || { echo "Refusing to build: CMDLINE_TOOLS_URL and CMDLINE_TOOLS_SHA256 are required." >&2; exit 1; }
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip openjdk-17-jre-headless socat libpulse0 libnss3 libgl1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Unprivileged user; ADB auth stays on (mount only the *public* key at ~/.android/adbkey.pub).
+RUN useradd -m -u 1000 android
+USER android
+WORKDIR /home/android
+
+ENV ANDROID_SDK_ROOT=/home/android/sdk
+RUN mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools" \
+ && curl -fsSL "$CMDLINE_TOOLS_URL" -o /tmp/tools.zip \
+ && echo "$CMDLINE_TOOLS_SHA256  /tmp/tools.zip" | sha256sum -c - \
+ && unzip -q /tmp/tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools" \
+ && mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest" \
+ && rm /tmp/tools.zip \
+ && yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null \
+ && "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" emulator platform-tools
+
+ENV PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+# The emulator listens on the container's loopback only; relay it for the published port.
+# Never use -wipe-data. Telemetry off.
+EXPOSE 5555
