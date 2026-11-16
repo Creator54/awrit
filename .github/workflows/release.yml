@@ -1,0 +1,138 @@
+name: Release
+'on':
+  push:
+    branches: [electron]
+  # Builds and tests the archives without releasing; download them from the run.
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  # Conventional commits drive the version: fix -> patch, feat -> minor.
+  # Merging the release PR bumps package.json, updates CHANGELOG.md and tags.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@v5
+
+  build:
+    needs: version
+    if: needs.version.outputs.created == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04,     target: linux-x64,   node: linux-x64,    ext: tar.xz, appimage: x86_64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64, node: linux-arm64,  ext: tar.xz, appimage: aarch64 }
+          - { os: macos-15,         target: macos-arm64, node: darwin-arm64, ext: tar.gz }
+          - { os: macos-15-intel,   target: macos-x64,   node: darwin-x64,   ext: tar.gz }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: '${{ needs.version.outputs.tag || github.sha }}' }
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      # Electron 45 fetches its binary lazily; packaging needs it in dist/ now.
+      - run: node node_modules/electron/install.js
+      - run: sh packaging/build-native.sh
+      - name: Fetch Node runtime
+        run: |
+          v=$(node -p process.versions.node); f=node-v$v-${{ matrix.node }}.${{ matrix.ext }}
+          curl -fsSLO https://nodejs.org/dist/v$v/$f
+          curl -fsSLO https://nodejs.org/dist/v$v/SHASUMS256.txt
+          grep " $f\$" SHASUMS256.txt | shasum -a 256 -c -
+          mkdir node-dist && tar -xf $f -C node-dist --strip-components 1
+      - name: Build archive
+        run: |
+          bun packaging/build.ts out/awrit node-dist node_modules/electron/dist
+          out/awrit/bin/awrit --version
+          python3 packaging/verify.py out/awrit --record
+          python3 packaging/archive.py out/awrit awrit-${{ matrix.target }}.tar.gz
+      - name: Test the archive as shipped
+        run: |
+          mkdir unpacked && tar -xzf awrit-${{ matrix.target }}.tar.gz -C unpacked
+          sh packaging/smoke.sh unpacked/awrit/bin/awrit
+      - name: Test the Homebrew cask
+        if: runner.os == 'macOS'
+        run: |
+          f=$PWD/awrit-${{ matrix.target }}.tar.gz; sum=$(shasum -a 256 "$f" | cut -d' ' -f1)
+          brew tap-new --no-git local/awrit
+          tap=$(brew --repository)/Library/Taps/local/homebrew-awrit
+          mkdir -p "$tap/Casks"
+          sh packaging/cask.sh 0.0.0 https://github.com/$GITHUB_REPOSITORY "file://$f" "$sum" "file://$f" "$sum" > "$tap/Casks/awrit.rb"
+          brew install --cask local/awrit/awrit
+          sh packaging/smoke.sh "$(brew --prefix)/bin/awrit"
+      - name: Build AppImage
+        if: matrix.appimage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          a=${{ matrix.appimage }}
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$a.AppImage
+          curl -fsSL -o runtime https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-$a
+          case $a in
+            x86_64)  sum=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d ;;
+            aarch64) sum=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444 ;;
+          esac
+          echo "$sum  runtime" | shasum -a 256 -c -
+          chmod +x appimagetool
+          python3 packaging/appimage.py out/awrit awrit-${{ matrix.target }}.AppImage --appimagetool ./appimagetool --runtime-file runtime
+          ./awrit-${{ matrix.target }}.AppImage --version
+          ./awrit-${{ matrix.target }}.AppImage context --claude >/dev/null
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: awrit-${{ matrix.target }}
+          path: |
+            awrit-${{ matrix.target }}.tar.gz*
+            awrit-${{ matrix.target }}.AppImage*
+      - if: needs.version.outputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          gh release upload ${{ needs.version.outputs.tag }} awrit-${{ matrix.target }}.tar.gz* awrit-${{ matrix.target }}.AppImage* --clobber
+
+  # Updates creator54/homebrew-tap; skipped until the HOMEBREW_TAP_KEY secret
+  # (a write deploy key on the tap) exists.
+  homebrew:
+    needs: [version, build]
+    if: needs.version.outputs.created == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - if: env.TAP_KEY != ''
+        uses: actions/checkout@v7
+      - if: env.TAP_KEY != ''
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 'awrit-macos-*.tar.gz.sha256'
+          arm=$(cut -d' ' -f1 awrit-macos-arm64.tar.gz.sha256)
+          x64=$(cut -d' ' -f1 awrit-macos-x64.tar.gz.sha256)
+          url=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o IdentitiesOnly=yes"
+          git clone -q git@github.com:creator54/homebrew-tap.git tap
+          mkdir -p tap/Casks
+          sh packaging/cask.sh "${TAG#v}" "https://github.com/$GITHUB_REPOSITORY" \
+            "$url/awrit-macos-arm64.tar.gz" "$arm" "$url/awrit-macos-x64.tar.gz" "$x64" > tap/Casks/awrit.rb
+          cd tap
+          git rm -q --ignore-unmatch Formula/awrit.rb
+          git add Casks/awrit.rb
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "awrit ${TAG#v}"
+          git push -q
