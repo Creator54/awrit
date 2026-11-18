@@ -506,9 +506,9 @@ export function Toolbar() {
 
       {/* Find in Page Popup (top-right floating pill aligned with theme) */}
       <Show when={findVisible()}>
-        <div class="fixed top-3 right-4 w-max max-w-[calc(100%-32px)] z-[2500] pointer-events-auto">
+        <div class="fixed top-3 right-4 w-max max-w-[calc(100%-32px)] z-[2500] pointer-events-auto [@media(max-height:100px)]:top-1 [@media(max-height:100px)]:right-2 [@media(max-height:100px)]:max-w-[calc(100%-16px)]">
           <div
-            class="flex flex-wrap justify-end items-center gap-2 bg-[#222228] border border-[var(--palette-border)] rounded-xl px-2.5 py-1.5 shadow-xl text-xs text-white"
+            class="flex flex-wrap justify-end items-center gap-2 bg-[#222228] border border-[var(--palette-border)] rounded-xl px-2.5 py-1.5 shadow-xl text-xs text-white [@media(max-height:100px)]:gap-y-1 [@media(max-height:100px)]:px-2 [@media(max-height:100px)]:py-1"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -529,7 +529,7 @@ export function Toolbar() {
               />
             </div>
 
-            <div class="flex max-w-full flex-wrap justify-end items-center gap-2">
+            <div class="flex max-w-full flex-wrap justify-end items-center gap-2 [@media(max-height:100px)]:gap-y-0.5">
               <Show when={findText() && totalMatches() !== null}>
                 <span class="px-1.5 py-0.5 rounded bg-white/10 text-[11px] font-mono text-[#c8c7d4] leading-none whitespace-nowrap">
                   {totalMatches() ? `${activeMatch()} / ${totalMatches()}` : 'No matches'}
