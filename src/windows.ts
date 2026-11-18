@@ -1032,6 +1032,7 @@ export async function createWindowWithToolbar(
         this.findVisible = !this.findVisible;
         if (options.dev) console_.log('[UI] toggleFind called, visible:', this.findVisible);
         if (this.findVisible) {
+          if (this.keyHelpVisible) this.toggleKeyHelp();
           this.omniboxVisible = false;
           loadToolbarContent();
         }

@@ -4,14 +4,18 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('./windows.ts', import.meta.url), 'utf8');
 
 function createView(omniboxVisible: boolean) {
-  const methods = ['toggleOmnibox', 'toggleKeyHelp'].map((name, index) => {
+  const methods = [
+    ['toggleOmnibox', 'toggleFind'],
+    ['toggleFind', 'toggleDesignMode'],
+    ['toggleKeyHelp', 'findNext'],
+  ].map(([name, next]) => {
     const start = source.indexOf(`      ${name}() {`);
-    return source.slice(start, source.indexOf(index === 0 ? '\n      toggleFind()' : '\n      findNext()', start));
+    return source.slice(start, source.indexOf(`\n      ${next}()`, start));
   });
   const sent: unknown[][] = [];
   let focused = '';
-  const transitions = new Function('loadToolbarContent', 'getAllKeyBindings', 'setTimeout',
-    `return ({${methods.join('\n')}});`)(() => {}, () => [], () => {});
+  const transitions = new Function('loadToolbarContent', 'getAllKeyBindings', 'setTimeout', 'options',
+    `return ({${methods.join('\n')}});`)(() => {}, () => [], () => {}, {});
   const view = {
     ...transitions,
     omniboxVisible,
@@ -47,6 +51,20 @@ test('opening the address bar closes shortcut help before showing the address ba
   ]);
   expect(focused()).toBe('toolbar');
   view.toggleOmnibox();
+  expect(view.keyHelpVisible).toBe(false);
+  expect(focused()).toBe('page');
+});
+
+test('opening Find closes shortcut help before showing Find', () => {
+  const { view, sent, focused } = createView(false);
+  view.toggleFind();
+  expect(view.keyHelpVisible).toBe(false);
+  expect(sent).toEqual([
+    ['awrit:set-key-help-visible', { visible: false }],
+    ['toolbar:toggle-find', true],
+  ]);
+  expect(focused()).toBe('toolbar');
+  view.toggleFind();
   expect(view.keyHelpVisible).toBe(false);
   expect(focused()).toBe('page');
 });
