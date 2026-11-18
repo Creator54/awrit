@@ -7,7 +7,7 @@ test('Find arrow buttons cancel typing searches before navigating', () => {
   for (const forward of [false, true]) {
     const title = source.indexOf(`title="${forward ? 'Next (Enter)' : 'Previous (Shift+Enter)'}"`);
     const start = source.lastIndexOf('onClick={', title);
-    const end = source.indexOf('\n                class=', start);
+    const end = source.indexOf('\n', start);
     const expression = source.slice(start + 'onClick={'.length, end).trim().slice(0, -1);
     const calls: unknown[] = [];
     let query = 'query';

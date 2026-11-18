@@ -47,19 +47,15 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
     e.preventDefault();
     e.stopPropagation();
     const r = barRef?.getBoundingClientRect();
-    const start = { mx: e.clientX, my: e.clientY, ...barOffset() };
-    const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+    if (!r) return;
+    const start = { mx: e.clientX, my: e.clientY, x: r.left, y: r.top };
     let frame: number | undefined;
     let pointer = { x: e.clientX, y: e.clientY };
     const paint = () => {
       frame = undefined;
-      const dx = pointer.x - start.mx;
-      const dy = pointer.y - start.my;
-      if (!r) return setBarOffset({ x: start.x + dx, y: start.y + dy });
-      // Keep the whole bar on screen.
       setBarOffset({
-        x: start.x + clamp(dx, -r.left, window.innerWidth - r.right),
-        y: start.y + clamp(dy, -r.top, window.innerHeight - r.bottom),
+        x: start.x + pointer.x - start.mx - (viewportDims().width - barSize().width) / 2,
+        y: start.y + pointer.y - start.my - 12,
       });
     };
     const move = (ev: MouseEvent) => {
@@ -607,14 +603,22 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
     }
     return null;
   };
+  // In short panes, reserve the top row for Return and Send all.
+  const compact = () => viewportDims().height < 200;
+  const bubbleInset = () => compact() ? 48 : 0;
+  const bubbleViewport = () => ({ ...viewportDims(), height: Math.max(0, viewportDims().height - bubbleInset()) });
+  const bubbleMargin = () => compact() ? 4 : 8;
   const bubbleSize = () => ({
-    width: Math.max(0, Math.min(260, viewportDims().width - 16)),
-    height: Math.max(0, Math.min(150, viewportDims().height - 16)),
+    width: Math.max(0, Math.min(260, viewportDims().width - 2 * bubbleMargin())),
+    height: Math.max(0, Math.min(150, bubbleViewport().height - 2 * bubbleMargin())),
   });
   const selectedAnnotation = () => annotations().find((a) => a.id === selectedAnnotationId());
   const bubblePosition = (ann: Annotation) => {
     const box = getViewBox(ann);
-    return box ? placeBubble(box, bubbleSize(), viewportDims()) : null;
+    if (!box || bubbleSize().height === 0) return null;
+    const inset = bubbleInset();
+    const position = placeBubble({ ...box, y: box.y - inset }, bubbleSize(), bubbleViewport(), 8, bubbleMargin());
+    return { ...position, y: position.y + inset };
   };
   // Typing replaces the annotation object but not its geometry; skip re-placing pins then.
   const pinBoxes = createMemo(
@@ -960,24 +964,15 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
         {/* Top bar: tool, save, send */}
         <div
           ref={observeBar}
-          class="absolute z-40 flex flex-col items-center gap-1 select-none w-max max-w-[calc(100%-16px)]"
+          class="absolute z-[41] flex flex-col items-center gap-1 select-none w-max max-w-[calc(100%-16px)] max-h-[calc(100%-16px)]"
           style={{
             left: `${Math.max(8, Math.min((viewportDims().width - barSize().width) / 2 + barOffset().x, viewportDims().width - barSize().width - 8))}px`,
-            top: `${Math.max(8, Math.min(12 + barOffset().y, viewportDims().height - barSize().height - 8))}px`,
+            top: `${compact() ? 8 : Math.max(8, Math.min(12 + barOffset().y, viewportDims().height - barSize().height - 8))}px`,
           }}
           onPointerDown={(e) => e.stopPropagation()}
           onPointerMove={(e) => e.stopPropagation()}
         >
-          <Show when={recipients().length > 0 && !recipient()}>
-            <div role="group" aria-label="Send feedback to" class="flex flex-col gap-1 p-2 rounded-lg border bg-[var(--ui-bg)] text-[var(--ui-text)] text-xs max-w-full max-h-[calc(100vh-64px)] overflow-auto break-words">
-              <span>Send to which chat?</span>
-              <For each={recipients()}>{client => (
-                <button type="button" disabled={isSaving()} class="text-left px-2 py-1 rounded hover:opacity-80 disabled:opacity-50" onClick={() => chooseRecipient(client.id)}>{client.label}</button>
-              )}</For>
-              <button type="button" onClick={() => { recipientNotes = undefined; setRecipients([]); setSaveStatus(''); }}>Cancel</button>
-            </div>
-          </Show>
-          <div class="design-review-toolbar relative flex items-center gap-2 p-1 rounded-full border text-xs whitespace-nowrap">
+          <div class="design-review-toolbar relative flex shrink-0 max-w-full items-center gap-2 p-1 rounded-full border text-xs">
             <div
               class="design-review-grip absolute right-full top-0 bottom-0 flex items-center px-2 cursor-grab select-none"
               title="Drag to move"
@@ -988,7 +983,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
             </div>
             <Show when={pendingNotes().length > 0 && (pendingNotes().length > 1 || !selectedAnnotation() || pendingNotes()[0].id !== selectedAnnotationId())}>
             <button
-              class="design-review-send px-3 py-1.5 text-xs font-medium rounded-full transition-colors disabled:opacity-50"
+              class="design-review-send px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors disabled:opacity-50"
               disabled={pendingNotes().length === 0 || isSaving()}
               title="Send all unsent feedback"
               onClick={() => send()}
@@ -1005,57 +1000,68 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
               <Icon name="play" class="inline w-4 h-4" />
             </button>
           </div>
-          <Show when={deletedNote()}>
-            <div role="status" class="flex flex-wrap justify-center items-center gap-2 max-w-full px-3 py-1 bg-[var(--ui-surface)] border border-[var(--ui-line-strong)] rounded-lg text-xs text-[var(--ui-text)]">
-              Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo delete</button>
-            </div>
-          </Show>
-          <Show
-            when={saveStatus()}
-            fallback={
-              <Show when={annotations().length === 0}>
-                <div class="flex flex-col items-center gap-1 max-w-full break-words px-3 py-2 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] text-center text-xs text-[var(--ui-text)]">
-                  <textarea
-                    ref={(el) => queueMicrotask(() => el.focus())}
-                    rows={2}
-                    spellcheck={false}
-                    aria-label="Ask the agent about this page"
-                    class="awrit-feedback-input w-72 max-w-full box-border px-3 py-2 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none"
-                    placeholder="Ask the agent about this page…"
-                    onKeyDown={(e) => {
-                      if (e.isComposing || e.keyCode === 229) return;
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        askAboutFrame(e.currentTarget.value);
-                      } else if (e.key.startsWith('Arrow')) {
-                        e.stopPropagation();
-                      }
-                    }}
-                  />
-                  <span class="text-[11px] text-[var(--ui-muted)]">↵ Send · ⇧↵ New line</span>
-                  <span>{isAdb() || frameSource()?.kind === 'terminal' ? 'or drag to comment' : 'or click or drag to comment'}</span>
-                  <Show when={!isAdb() && frameSource()?.kind !== 'terminal'}>
-                    <span class="text-[11px] text-[var(--ui-muted)]">↑ ↓ adjust element · Shift+click adds to note</span>
-                  </Show>
-                </div>
-              </Show>
-            }
-          >
-            <div
-              role="status"
-              aria-live="polite"
-              class={`max-w-full break-words px-2 py-0.5 rounded-xl text-[11px] border border-[var(--ui-line-strong)] bg-[var(--ui-surface)]/95 ${
-                saveOutcome() === 'warning'
-                  ? 'text-[var(--ui-warn)]'
-                  : saveOutcome() === 'error'
-                    ? 'text-[var(--ui-danger)]'
-                    : 'text-[var(--ui-muted)]'
-              }`}
+          <div class="flex min-h-0 max-w-full flex-col items-center gap-1 overflow-y-auto overscroll-contain">
+            <Show when={recipients().length > 0 && !recipient()}>
+              <div role="group" aria-label="Send feedback to" class="flex flex-col gap-1 p-2 rounded-lg border bg-[var(--ui-bg)] text-[var(--ui-text)] text-xs w-full break-words">
+                <span>Send to which chat?</span>
+                <For each={recipients()}>{client => (
+                  <button type="button" disabled={isSaving()} class="text-left px-2 py-1 rounded hover:opacity-80 disabled:opacity-50" onClick={() => chooseRecipient(client.id)}>{client.label}</button>
+                )}</For>
+                <button type="button" onClick={() => { recipientNotes = undefined; setRecipients([]); setSaveStatus(''); }}>Cancel</button>
+              </div>
+            </Show>
+            <Show when={deletedNote()}>
+              <div role="status" class="flex flex-wrap justify-center items-center gap-2 max-w-full px-3 py-1 bg-[var(--ui-surface)] border border-[var(--ui-line-strong)] rounded-lg text-xs text-[var(--ui-text)]">
+                Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo delete</button>
+              </div>
+            </Show>
+            <Show
+              when={saveStatus()}
+              fallback={
+                <Show when={annotations().length === 0}>
+                  <div class="flex flex-col items-center gap-1 max-w-full break-words px-3 py-2 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] text-center text-xs text-[var(--ui-text)]">
+                    <textarea
+                      ref={(el) => queueMicrotask(() => el.focus())}
+                      rows={2}
+                      spellcheck={false}
+                      aria-label="Ask the agent about this page"
+                      class="awrit-feedback-input w-72 max-w-full shrink-0 box-border px-3 py-2 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none"
+                      placeholder="Ask the agent about this page…"
+                      onKeyDown={(e) => {
+                        if (e.isComposing || e.keyCode === 229) return;
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          askAboutFrame(e.currentTarget.value);
+                        } else if (e.key.startsWith('Arrow')) {
+                          e.stopPropagation();
+                        }
+                      }}
+                    />
+                    <span class="text-[11px] text-[var(--ui-muted)]">↵ Send · ⇧↵ New line</span>
+                    <span>{isAdb() || frameSource()?.kind === 'terminal' ? 'or drag to comment' : 'or click or drag to comment'}</span>
+                    <Show when={!isAdb() && frameSource()?.kind !== 'terminal'}>
+                      <span class="text-[11px] text-[var(--ui-muted)]">↑ ↓ adjust element · Shift+click adds to note</span>
+                    </Show>
+                  </div>
+                </Show>
+              }
             >
-              {saveStatus()}
-            </div>
-          </Show>
+              <div
+                role="status"
+                aria-live="polite"
+                class={`max-w-full break-words px-2 py-0.5 rounded-xl text-[11px] border border-[var(--ui-line-strong)] bg-[var(--ui-surface)]/95 ${
+                  saveOutcome() === 'warning'
+                    ? 'text-[var(--ui-warn)]'
+                    : saveOutcome() === 'error'
+                      ? 'text-[var(--ui-danger)]'
+                      : 'text-[var(--ui-muted)]'
+                }`}
+              >
+                {saveStatus()}
+              </div>
+            </Show>
+          </div>
         </div>
 
         {/* Note bubble next to the selected annotation */}
@@ -1066,7 +1072,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
               <Show when={pos()}>
                 {(p) => (
                   <div
-                    class="design-review-comment absolute z-40 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] flex flex-col gap-1.5 p-2.5 box-border"
+                    class="design-review-comment absolute z-40 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] flex flex-col gap-1.5 p-2.5 box-border overflow-y-auto overscroll-contain [@media(max-height:199px)]:p-1"
                     style={{
                       left: `${p().x}px`,
                       top: `${p().y}px`,
@@ -1076,7 +1082,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                     onPointerDown={(e) => e.stopPropagation()}
                     onPointerMove={(e) => e.stopPropagation()}
                   >
-                    <div class="flex items-center gap-1 text-[11px] text-[var(--ui-muted)]">
+                    <div class="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ui-muted)]">
                       <span class="mr-auto truncate">
                         #{annotations().findIndex((a) => a.id === ann().id) + 1} {kindLabel(ann())}
                       </span>
@@ -1117,7 +1123,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                     <textarea
                       ref={(el) => queueMicrotask(() => el.focus())}
                       aria-label="Feedback"
-                      class="awrit-feedback-input w-full flex-1 min-h-0 box-border px-2 py-1.5 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none"
+                      class="awrit-feedback-input w-full flex-1 min-h-9 box-border px-2 py-1.5 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none"
                       placeholder="What should change?"
                       value={activeComment()}
                       onInput={(e) => {
@@ -1137,7 +1143,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                         }
                       }}
                     />
-                    <div class="flex items-center justify-between gap-2 text-[10px] text-[var(--ui-muted)]">
+                    <div class="flex shrink-0 items-center justify-between gap-2 text-[10px] text-[var(--ui-muted)]">
                       <span title="Enter sends · Shift+Enter adds a new line">↵ Send · ⇧↵ New line</span>
                       <button
                       class="design-review-note-send shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full disabled:opacity-50"

@@ -250,17 +250,19 @@ describe('DesignModeOverlay regressions', () => {
     expect(focused).toBe('last');
   });
 
-  test('bar drag captures stopped events and coalesces updates until the next frame', () => {
+  test('bar drag coalesces captured events and uses the current pane width', () => {
     const start = overlaySource.indexOf('const startBarDrag =');
     const end = overlaySource.indexOf('let viewportRef', start);
     const listeners = new Map<string, { callback: (event: unknown) => void; capture: unknown }>();
     let scheduled: (() => void) | undefined;
     const updates: unknown[] = [];
+    let width = 800;
     const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(`${overlaySource.slice(start, end)}; startBarDrag(event);`);
     vm.runInNewContext(script, {
       stopBarDrag: undefined,
-      barRef: { getBoundingClientRect: () => ({ left: 100, right: 300, top: 10, bottom: 60 }) },
-      barOffset: () => ({ x: 0, y: 0 }), setBarOffset: (value: unknown) => updates.push(value),
+      barRef: { getBoundingClientRect: () => ({ left: 300, top: 12 }) },
+      barSize: () => ({ width: 200 }), viewportDims: () => ({ width }),
+      setBarOffset: (value: unknown) => updates.push(value),
       event: { clientX: 150, clientY: 30, preventDefault() {}, stopPropagation() {} },
       requestAnimationFrame: (callback: () => void) => { scheduled = callback; return 1; },
       cancelAnimationFrame() {},
@@ -275,9 +277,10 @@ describe('DesignModeOverlay regressions', () => {
     expect(updates).toHaveLength(0);
     scheduled?.();
     expect(updates).toEqual([{ x: 30, y: 20 }]);
+    width = 640;
     listeners.get('mousemove')?.callback({ clientX: 190, clientY: 60 });
     listeners.get('mouseup')?.callback({});
-    expect(updates).toEqual([{ x: 30, y: 20 }, { x: 40, y: 30 }]);
+    expect(updates).toEqual([{ x: 30, y: 20 }, { x: 120, y: 30 }]);
     expect(listeners.size).toBe(0);
   });
 

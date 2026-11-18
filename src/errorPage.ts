@@ -170,7 +170,7 @@ function recoveryPage(
     .icon { width: 28px; height: 28px; color: #adadb8; margin-bottom: 16px; }
     h1 { font-size: 24px; line-height: 1.3; font-weight: 600; margin: 0 0 12px; }
     p { color: #adadb8; margin: 0 0 20px; }
-    .url { overflow-wrap: anywhere; font-size: 13px; margin-bottom: 24px; }
+    .url { overflow-wrap: anywhere; font-size: 13px; margin: 8px 0; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     button { font: inherit; font-size: 13px; min-height: 36px; padding: 6px 12px;
       border: 1px solid #646371; border-radius: 8px; background: transparent;
@@ -182,6 +182,14 @@ function recoveryPage(
     details { margin-top: 28px; color: #adadb8; font-size: 13px; overflow-wrap: anywhere; }
     summary { cursor: pointer; width: fit-content; }
     code { display: block; margin-top: 12px; white-space: pre-wrap; }
+    @media (max-height: 200px) {
+      body { padding: 8px 12px; }
+      main { padding: 0; }
+      .icon { display: none; }
+      h1 { font-size: 18px; margin-bottom: 4px; }
+      p { margin-bottom: 8px; }
+      details { margin-top: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -191,13 +199,15 @@ function recoveryPage(
     </svg>
     <h1>${escapeHtml(title)}</h1>
     <p>${escapeHtml(message)}</p>
-    ${failedUrl.startsWith('data:') ? '' : `<p class="url">${escapeHtml(failedUrl)}</p>`}
     <div class="actions">
       <button class="primary" id="awrit-retry">Retry</button>
       <button id="awrit-back">Go Back</button>
       ${canOpenExternal ? '<button id="awrit-external">Open in Browser</button>' : ''}
     </div>
-    <details><summary>Details</summary><code>${escapeHtml(diagnostics)}</code></details>
+    <details><summary>Details</summary>
+      ${failedUrl.startsWith('data:') ? '' : `<p class="url">${escapeHtml(failedUrl)}</p>`}
+      <code>${escapeHtml(diagnostics)}</code>
+    </details>
   </main>
   <script>
     (function () {
