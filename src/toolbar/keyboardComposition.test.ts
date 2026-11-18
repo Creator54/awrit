@@ -43,13 +43,39 @@ test('Escape in the permission prompt does not reach the underlying toolbar', ()
   const calls: string[] = [];
   const expression = source.slice(start, end + '\n              }'.length).replace('onKeyDown={', '');
   const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(`const onKeyDown = ${expression};`);
-  const onKeyDown = new Function('window', 'req', 'setPermissionReq', `${code}; return onKeyDown;`)(
+  const onKeyDown = new Function('window', 'req', 'dismissPermissionPrompt', `${code}; return onKeyDown;`)(
     { ipc: { resolvePermission: () => calls.push('deny') } },
     () => ({ id: 1, url: 'https://example.test', permission: 'geolocation' }),
     () => calls.push('dismiss'),
   );
   onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation: () => calls.push('stop') });
   expect(calls).toEqual(['stop', 'deny', 'dismiss']);
+});
+
+test('permission prompt replacement preserves the original return focus', () => {
+  const start = source.indexOf('  let permissionReturnFocus:');
+  const end = source.indexOf('\n\n  window.ipc.onSitePermissionsChanged', start);
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  class Control {
+    isConnected = true;
+    focus() { document.activeElement = this; }
+  }
+  const original = new Control();
+  const document = { activeElement: original };
+  let pending: number | null = null;
+  let request = (_id: number) => { throw new Error('Missing permission listener'); };
+  const dismiss = new Function('window', 'document', 'HTMLElement', 'permissionReq', 'setPermissionReq',
+    `${code}; return dismissPermissionPrompt;`)(
+    { ipc: { onPermissionRequest: (callback: typeof request) => { request = callback; } } },
+    document, Control, () => pending, (id: number | null) => { pending = id; },
+  );
+  request(1);
+  const promptButton = new Control();
+  promptButton.focus();
+  request(2);
+  dismiss();
+  expect(pending).toBeNull();
+  expect(document.activeElement).toBe(original);
 });
 
 test('hiding Find cancels a queued search and hidden callbacks cannot search', () => {
