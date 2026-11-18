@@ -155,10 +155,9 @@ ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission
   const { managedViews } = require('./windows');
   const view = managedViews.find((v: any) => v.toolbar.webContents === event.sender);
   if (view) {
-    view.toolbar.setIgnoreMouseEvents(
-      !view.omniboxVisible && !view.keyHelpVisible && !view.findVisible,
-    );
-    if (view.omniboxVisible || view.findVisible || view.keyHelpVisible) {
+    const toolbarOwnsInput = view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode;
+    view.toolbar.setIgnoreMouseEvents(!toolbarOwnsInput);
+    if (toolbarOwnsInput) {
       view.toolbar.focusOnWebView();
     } else {
       view.content.focusOnWebView();
