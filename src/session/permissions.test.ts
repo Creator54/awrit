@@ -94,6 +94,26 @@ test('answered prompts remove destruction listeners and ignore duplicate answers
   expect(harness.toolbar.listenerCount('destroyed')).toBe(0);
 });
 
+test('a stale response cannot steal focus from the replacement permission prompt', async () => {
+  const { view, page, toolbar, request, listeners } = await permissionHarness();
+  const url = 'https://untrusted.example';
+  const results: boolean[] = [];
+  request(page, 'geolocation', (allowed) => results.push(allowed), { requestingUrl: url });
+  request(page, 'notifications', (allowed) => results.push(allowed), { requestingUrl: url });
+  const answer = listeners.get('toolbar:permission-response');
+  if (!answer) throw new Error('Permission response handler missing');
+  answer({ sender: toolbar }, { id: 1, allowed: false, url, permission: 'geolocation' });
+
+  expect(results).toEqual([false]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(false);
+  expect(view.content.focusOnWebView).not.toHaveBeenCalled();
+
+  answer({ sender: toolbar }, { id: 2, allowed: true, url, permission: 'notifications' });
+  expect(results).toEqual([false, true]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(true);
+  expect(view.content.focusOnWebView).toHaveBeenCalledTimes(1);
+});
+
 test.each([true, false])('permission dismissal restores the input owner (Design Mode: %s)', async (designMode) => {
   const { view, page, toolbar, request, listeners } = await permissionHarness();
   view.designMode = designMode;
