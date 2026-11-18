@@ -1081,6 +1081,18 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                     }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onPointerMove={(e) => e.stopPropagation()}
+                    onWheel={(e) => {
+                      if (!(e.target instanceof HTMLTextAreaElement) || e.deltaY === 0 || e.ctrlKey) return;
+                      const editor = e.target;
+                      const atEdge = e.deltaY < 0 ? editor.scrollTop <= 0
+                        : editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
+                      if (!atEdge || e.currentTarget.scrollHeight <= e.currentTarget.clientHeight) return;
+                      // Chromium can keep wheel scrolling latched to the editor at its edge.
+                      e.preventDefault();
+                      const step = e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.currentTarget.clientHeight
+                        : e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+                      e.currentTarget.scrollTop += e.deltaY * step;
+                    }}
                   >
                     <div class="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ui-muted)]">
                       <span class="mr-auto truncate">
