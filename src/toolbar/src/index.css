@@ -217,6 +217,15 @@ body {
   .permission-btn.primary { background: #4a4955; }
   .permission-btn.primary:hover { background: #5a5966; }
   .permission-btn:focus-visible { outline: 2px solid #8f8f9d; outline-offset: 2px; }
+  @media (max-width: 180px) {
+    .permission-actions { padding-inline: 8px; }
+    .permission-btn { padding-inline: 10px; }
+  }
+  @media (max-height: 100px) {
+    .permission-palette { max-height: calc(100dvh - 8px); }
+    .permission-body { padding-block: 4px; }
+    .permission-actions { padding-block: 5px; }
+  }
   .palette-divider { height: 1px; background: var(--palette-border); flex-shrink: 0; }
   .palette-input::placeholder { color: var(--text-muted); opacity: 1; }
   .palette-input::selection { color: #1c1b22; background: #c4d7f5; }
