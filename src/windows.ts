@@ -1168,11 +1168,11 @@ export async function createWindowWithToolbar(
           // Re-registration during a suppressed resize may have no page buffer yet.
           this.content.webContents.invalidate();
           sendDesignModeSignal();
-          this.toolbar.setIgnoreMouseEvents(
-            !this.findVisible && !this.omniboxVisible && !this.keyHelpVisible,
-          );
-          this.content.focusOnWebView();
-          this.content.focus();
+          const toolbarOwnsInput = this.findVisible || this.omniboxVisible || this.keyHelpVisible || this.permissionPending;
+          this.toolbar.setIgnoreMouseEvents(!toolbarOwnsInput);
+          const inputOwner = toolbarOwnsInput ? this.toolbar : this.content;
+          inputOwner.focusOnWebView();
+          inputOwner.focus();
         }
 
         this.content.webContents.send('awrit:set-design-mode', this.designMode);
