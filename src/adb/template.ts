@@ -61,7 +61,10 @@ html, body {
     top: var(--space-2);
     left: var(--space-2);
     right: calc(var(--space-2) + var(--control-size) + var(--space-1));
+    max-height: calc(100% - 2 * var(--space-2));
     display: flex;
+    flex-wrap: wrap;
+    align-content: start;
     align-items: center;
     justify-content: safe center;
     gap: var(--space-1);
@@ -115,7 +118,9 @@ button svg {
 .control-tip {
     position: fixed;
     z-index: 30;
-    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100vw - 8px);
+    overflow-wrap: anywhere;
     padding: var(--space-1) var(--space-2);
     border: 1px solid var(--ui-line-strong);
     border-radius: var(--control-radius);
@@ -271,20 +276,31 @@ function saveScreenshot() {
         .catch(() => { hud.textContent = 'Screenshot failed'; });
 }
 
+function showControlTip(btn) {
+    const rect = btn.getBoundingClientRect();
+    controlTip.textContent = btn.getAttribute('aria-label');
+    controlTip.hidden = false;
+    const { offsetWidth: width, offsetHeight: height } = controlTip;
+    const gap = 4;
+    const left = rect.left + (rect.width - width) / 2;
+    const below = rect.bottom + gap;
+    const top = below + height <= window.innerHeight - gap ? below : rect.top - height - gap;
+    controlTip.style.left = Math.max(gap, Math.min(left, window.innerWidth - width - gap)) + 'px';
+    controlTip.style.top = Math.max(gap, Math.min(top, window.innerHeight - height - gap)) + 'px';
+}
+function hideControlTip() { controlTip.hidden = true; }
+window.addEventListener('resize', hideControlTip);
+window.addEventListener('scroll', hideControlTip, true);
+document.querySelectorAll('#android-controls button').forEach(btn => {
+    const showTip = () => showControlTip(btn);
+    btn.addEventListener('mouseenter', showTip);
+    btn.addEventListener('mouseleave', hideControlTip);
+    btn.addEventListener('focus', showTip);
+    btn.addEventListener('blur', hideControlTip);
+});
+
 // Navigation buttons
 document.querySelectorAll('button[data-key]').forEach(btn => {
-    const showTip = () => {
-        const rect = btn.getBoundingClientRect();
-        controlTip.textContent = btn.getAttribute('aria-label');
-        controlTip.style.left = (rect.left + rect.width / 2) + 'px';
-        controlTip.style.top = (rect.bottom + 4) + 'px';
-        controlTip.hidden = false;
-    };
-    const hideTip = () => { controlTip.hidden = true; };
-    btn.addEventListener('mouseenter', showTip);
-    btn.addEventListener('mouseleave', hideTip);
-    btn.addEventListener('focus', showTip);
-    btn.addEventListener('blur', hideTip);
     btn.onclick = (e) => {
         e.preventDefault();
         sendKey(btn.dataset.key);
@@ -294,18 +310,6 @@ document.querySelectorAll('button[data-key]').forEach(btn => {
 // Rotate button
 const rotateBtn = document.getElementById('btn-rotate');
 if (rotateBtn) {
-    const showRotateTip = () => {
-        const rect = rotateBtn.getBoundingClientRect();
-        controlTip.textContent = rotateBtn.getAttribute('aria-label');
-        controlTip.style.left = (rect.left + rect.width / 2) + 'px';
-        controlTip.style.top = (rect.bottom + 4) + 'px';
-        controlTip.hidden = false;
-    };
-    const hideRotateTip = () => { controlTip.hidden = true; };
-    rotateBtn.addEventListener('mouseenter', showRotateTip);
-    rotateBtn.addEventListener('mouseleave', hideRotateTip);
-    rotateBtn.addEventListener('focus', showRotateTip);
-    rotateBtn.addEventListener('blur', hideRotateTip);
     rotateBtn.onclick = (e) => {
         e.preventDefault();
         rotateScreen();
@@ -315,18 +319,6 @@ if (rotateBtn) {
 // Screenshot button
 const screenshotBtn = document.getElementById('btn-screenshot');
 if (screenshotBtn) {
-    const showScreenshotTip = () => {
-        const rect = screenshotBtn.getBoundingClientRect();
-        controlTip.textContent = screenshotBtn.getAttribute('aria-label');
-        controlTip.style.left = (rect.left + rect.width / 2) + 'px';
-        controlTip.style.top = (rect.bottom + 4) + 'px';
-        controlTip.hidden = false;
-    };
-    const hideScreenshotTip = () => { controlTip.hidden = true; };
-    screenshotBtn.addEventListener('mouseenter', showScreenshotTip);
-    screenshotBtn.addEventListener('mouseleave', hideScreenshotTip);
-    screenshotBtn.addEventListener('focus', showScreenshotTip);
-    screenshotBtn.addEventListener('blur', hideScreenshotTip);
     screenshotBtn.onclick = (e) => {
         e.preventDefault();
         saveScreenshot();
