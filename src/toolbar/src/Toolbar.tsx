@@ -910,14 +910,14 @@ export function Toolbar() {
           onClick={() => window.ipc.toggleKeyHelp()}
         >
           <div
-            class="w-[520px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex flex-col overflow-y-auto bg-[#1c1b22] border border-[#30303a] rounded-xl p-4 [@media(max-height:200px)]:p-2"
+            class="shortcut-dialog w-[520px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden bg-[#1c1b22] border border-[#30303a] rounded-xl p-4 [@media(max-height:200px)]:p-2"
             role="dialog"
             aria-modal="true"
             aria-label="Keyboard shortcuts"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key !== 'Tab') return;
-              const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, summary')].filter(el => el.getClientRects().length > 0);
+              const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, summary, [tabindex="0"]')].filter(el => el.getClientRects().length > 0);
               if (!controls.length) return;
               const index = controls.indexOf(document.activeElement as HTMLElement);
               if ((e.shiftKey && index <= 0) || (!e.shiftKey && index === controls.length - 1)) {
@@ -926,14 +926,14 @@ export function Toolbar() {
               }
             }}
           >
-            <div class="flex shrink-0 items-center justify-between mb-4 [@media(max-height:200px)]:mb-1">
+            <div class="shortcut-heading flex shrink-0 items-center justify-between mb-4 [@media(max-height:200px)]:mb-1">
               <h2 class="text-white/90 text-lg font-semibold">Keyboard shortcuts</h2>
               <button type="button" class="p-1 rounded-lg text-[#c8c7d4] hover:bg-[#30303a] focus-visible:outline-2 focus-visible:outline-[#a0a0b0]" title="Close (Escape)" aria-label="Close keyboard shortcuts" onClick={() => window.ipc.toggleKeyHelp()}>
                 <Icon name="clear" />
               </button>
             </div>
             <input ref={shortcutSearch} type="search" value={shortcutQuery()} onInput={e => setShortcutQuery(e.currentTarget.value)} aria-label="Search shortcuts" placeholder="Search shortcuts" class="w-full shrink-0 bg-[#222228] border border-[#30303a] rounded-lg px-3 py-2 mb-3 [@media(max-height:200px)]:mb-1 [@media(max-height:200px)]:py-1 text-sm text-[#fbfbfe] placeholder-[var(--text-muted)] focus-visible:outline-2 focus-visible:outline-[#a0a0b0]" />
-            <div class="awrit-feedback-input min-h-0 overflow-y-auto max-h-[60vh] pr-2 pb-2 [@media(max-height:200px)]:min-h-max [@media(max-height:200px)]:max-h-none">
+            <div class="shortcut-results awrit-feedback-input min-h-0 overflow-y-auto overscroll-contain max-h-[60vh] pr-2 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#a0a0b0]" role="region" aria-label="Shortcut results" tabIndex={0}>
               <Show when={shortcutGroups().length} fallback={<p class="text-sm text-[#c8c7d4] py-3">No matching shortcuts</p>}>
                 <For each={shortcutGroups()}>
                   {group => (

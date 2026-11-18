@@ -70,6 +70,21 @@ body {
   --scroll-thumb-hover: var(--ui-muted);
   background-color: var(--ui-bg);
 }
+@media (max-height: 160px) {
+  .shortcut-dialog {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 4px;
+    max-height: calc(100dvh - 8px);
+    padding: 4px;
+  }
+  .shortcut-heading { display: contents; }
+  .shortcut-heading h2 { display: none; }
+  .shortcut-heading button { grid-area: 1 / 2; }
+  .shortcut-dialog input { grid-area: 1 / 1; margin: 0; min-width: 0; }
+  .shortcut-results { grid-column: 1 / -1; }
+}
 .design-review-terminal { background-color: transparent; }
 .design-review .awrit-feedback-input { color-scheme: inherit; }
 .design-review button:not(:disabled) { cursor: pointer; }
