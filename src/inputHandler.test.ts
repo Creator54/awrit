@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { TermEvent } from '../awrit-native-rs';
 import { getAppDataPath } from './paths';
+import { installDesignIpcElectronStubs } from './design/windowDesignIpcHarness';
 
 // Point settings at a temp dir so the Android leader key is deterministic on every platform.
 const savedEnv = { HOME: process.env.HOME, XDG_DATA_HOME: process.env.XDG_DATA_HOME, LOCALAPPDATA: process.env.LOCALAPPDATA };
@@ -37,6 +38,7 @@ function createWebContents() {
     events,
     focus: mock(() => {}),
     insertText: mock(() => {}),
+    paste: mock(() => {}),
     send: mock(() => {}),
     sendInputEvent: mock((event: any) => {
       events.push(event);
@@ -100,6 +102,21 @@ describe('handleInput', () => {
     });
     expect(binding).not.toHaveBeenCalled();
     expect(toolbarWebContents.events.some((event) => event.keyCode === '1')).toBe(true);
+  });
+
+  test.each(['designMode', 'permissionPending'] as const)('routes remote paste to the toolbar while %s owns input', (overlay) => {
+    installDesignIpcElectronStubs();
+    const { view, contentWebContents, toolbarWebContents } = createView();
+    focusedView.current = view;
+    view[overlay] = true;
+    expect(handleInput({ eventType: 'paste', paste: 'test text' })).toBe(true);
+    expect(toolbarWebContents.paste).toHaveBeenCalledTimes(1);
+    expect(contentWebContents.paste).not.toHaveBeenCalled();
+
+    view[overlay] = false;
+    expect(handleInput({ eventType: 'paste', paste: 'page text' })).toBe(true);
+    expect(toolbarWebContents.paste).toHaveBeenCalledTimes(1);
+    expect(contentWebContents.paste).toHaveBeenCalledTimes(1);
   });
 
   test('terminal key delivery marks synthetic input only during the send', () => {
