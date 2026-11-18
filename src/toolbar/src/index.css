@@ -147,9 +147,10 @@ body {
     animation: palette-in var(--duration-fast) var(--ease-decelerate);
   }
 
-  .floating-palette { width: min(520px, calc(100vw - 32px)); }
+  .floating-palette { width: min(720px, calc(100% - 32px)); }
   .permission-palette { width: min(400px, calc(100vw - 32px)); overflow-y: auto; }
   .floating-palette .input-container { height: 56px; }
+  .floating-palette .palette-input { font-size: 16px; }
   .floating-palette:focus-within { border-color: var(--ui-accent); }
   .site-info-btn { color: var(--text-muted); background: transparent; border: none; padding: 4px; margin: -4px; border-radius: 6px; cursor: pointer; }
   .site-info-btn:hover, .site-info-btn.open { color: var(--text-primary); background: #2b2a33; }
