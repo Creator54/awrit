@@ -1013,9 +1013,9 @@ export async function createWindowWithToolbar(
         }
 
         this.toolbar.setIgnoreMouseEvents(
-          !this.omniboxVisible && !this.keyHelpVisible && !this.findVisible,
+          !this.omniboxVisible && !this.keyHelpVisible && !this.findVisible && !this.permissionPending,
         );
-        if (this.omniboxVisible) {
+        if (this.omniboxVisible || this.permissionPending) {
           this.toolbar.focusOnWebView();
           this.toolbar.focus();
         } else {
