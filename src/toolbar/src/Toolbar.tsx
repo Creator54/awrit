@@ -116,7 +116,7 @@ export function Toolbar() {
       setUrl(lastCommittedUrl());
       setSelectedIndex(-1);
       urlFocusTimer = setTimeout(() => {
-        if (!omniboxVisible()) return;
+        if (!omniboxVisible() || permissionReq()) return;
         inputRef?.focus();
         inputRef?.select();
       }, 50);
@@ -129,7 +129,8 @@ export function Toolbar() {
   let permissionReturnFocus: HTMLElement | null = null;
   window.ipc.onPermissionRequest((req) => {
     if (!permissionReq()) {
-      permissionReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const active = document.activeElement;
+      permissionReturnFocus = active instanceof HTMLElement && active !== document.body ? active : null;
     }
     setPermissionReq(req);
   });
@@ -137,6 +138,8 @@ export function Toolbar() {
   const dismissPermissionPrompt = () => {
     setPermissionReq(null);
     if (permissionReturnFocus?.isConnected) permissionReturnFocus.focus();
+    else if (findVisible()) findInputRef?.focus();
+    else if (omniboxVisible()) inputRef?.focus();
     permissionReturnFocus = null;
   };
 
@@ -169,7 +172,7 @@ export function Toolbar() {
     if (isVisible) {
       setOmniboxVisible(false);
       findFocusTimer = setTimeout(() => {
-        if (!findVisible()) return;
+        if (!findVisible() || permissionReq()) return;
         findInputRef?.focus();
         findInputRef?.select();
       }, 50);
