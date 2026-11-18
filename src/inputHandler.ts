@@ -124,14 +124,11 @@ export function createInputHandler(
       return handleKeyBinding(evt);
     }
 
+    const isToolbarActive =
+      view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode || view.permissionPending;
+
     switch (evt.eventType) {
       case 'key': {
-        const isToolbarActive =
-          view.omniboxVisible ||
-          view.keyHelpVisible ||
-          view.findVisible ||
-          view.designMode ||
-          view.permissionPending;
         const adbInput = !!view.adbMode && !isToolbarActive;
         const keyCode = evt.keyEvent?.code.toLowerCase();
         const mods = normalizeModifiers(evt.keyEvent?.modifiers || []).filter((m) =>
@@ -300,7 +297,6 @@ export function createInputHandler(
 
       case 'paste': {
         if (evt.paste) {
-          const isToolbarActive = view.omniboxVisible || view.keyHelpVisible || view.findVisible;
           const webContents = isToolbarActive ? view.toolbar.webContents : view.content.webContents;
           const { clipboard } = require('electron');
           clipboard.writeText(evt.paste);
@@ -351,11 +347,7 @@ export function createInputHandler(
         const { toolbarNode, contentNode, layoutContainer } = view;
         const dpr = layoutContainer.devicePixelRatio;
 
-        const isOverlayActive =
-          view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode || view.permissionPending;
-        const isInToolbar = isOverlayActive;
-
-        const targetWindow = isInToolbar ? view.toolbar : view.content;
+        const targetWindow = isToolbarActive ? view.toolbar : view.content;
         const targetContents = targetWindow.webContents;
 
         // OPTIMIZED FOCUS: Only focus if not already focused
@@ -364,7 +356,7 @@ export function createInputHandler(
           view.focusedContent = targetContents;
         }
 
-        const targetNode = isInToolbar ? toolbarNode : contentNode;
+        const targetNode = isToolbarActive ? toolbarNode : contentNode;
         const adjustedX = Math.floor((rawX - targetNode.deviceLayout.x) / dpr);
         const adjustedY = Math.floor((rawY - targetNode.deviceLayout.y) / dpr);
 
@@ -453,7 +445,7 @@ export function createInputHandler(
 
           if (
             !view.adbMode &&
-            !isOverlayActive &&
+            !isToolbarActive &&
             Math.abs(horizontalScrollAccumulator) >= NAVIGATION_THRESHOLD &&
             now - lastNavigationTime > NAVIGATION_COOLDOWN
           ) {
