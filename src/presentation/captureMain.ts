@@ -504,9 +504,6 @@ function start(): void {
   const electron: typeof Electron = require('electron');
   const { app } = electron;
 
-  app.disableHardwareAcceleration();
-  app.commandLine.appendSwitch('disable-gpu');
-
   app
     .whenReady()
     .then(() => {
