@@ -71,6 +71,25 @@ test.each(['toggleFind', 'toggleOmnibox', 'toggleKeyHelp'] as const)('%s clears 
   expect(focused()).toBe(action === 'toggleFind' ? 'page' : 'toolbar');
 });
 
+test('clearing the Find query clears highlights without moving focus', () => {
+  const start = source.indexOf('  stopFindInPageHandlers.set(toolbarContents.id,');
+  const end = source.indexOf('\n\n  return', start);
+  const handlers = new Map<number, () => void>();
+  const contentContents = { stopFindInPage: mock(() => {}) };
+  const toolbarContents = { id: 1 };
+  const view = { focusedContent: toolbarContents, content: { focusOnWebView: mock(() => {}) } };
+  new Function('stopFindInPageHandlers', 'toolbarContents', 'contentContents', 'view', source.slice(start, end))(
+    handlers, toolbarContents, contentContents, view,
+  );
+
+  const clearQuery = handlers.get(toolbarContents.id);
+  if (!clearQuery) throw new Error('Missing Find cleanup handler');
+  clearQuery();
+  expect(contentContents.stopFindInPage).toHaveBeenCalledWith('clearSelection');
+  expect(view.content.focusOnWebView).not.toHaveBeenCalled();
+  expect(view.focusedContent).toBe(toolbarContents);
+});
+
 test('opening Find closes shortcut help before showing Find', () => {
   const { view, sent, focused } = createView(false);
   view.toggleFind();

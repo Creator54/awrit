@@ -1931,8 +1931,6 @@ function setupToolbarIPC(
   );
   stopFindInPageHandlers.set(toolbarContents.id, () => {
     contentContents.stopFindInPage('clearSelection');
-    view.content.focusOnWebView();
-    view.focusedContent = contentContents;
   });
 
   return () => {
