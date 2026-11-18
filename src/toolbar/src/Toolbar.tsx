@@ -77,6 +77,7 @@ export function Toolbar() {
   let inputRef: HTMLInputElement | undefined;
   let findInputRef: HTMLInputElement | undefined;
   let suggestionsContainerRef: HTMLDivElement | undefined;
+  let siteInfoPanelRef: HTMLDivElement | undefined;
   let leavingReview = false;
 
   // IPC Listeners
@@ -137,7 +138,7 @@ export function Toolbar() {
   // event forwarded from the main process (offscreen webviews don't reliably
   // scroll from synthetic mouseWheel sendInputEvent).
   window.ipc.onScrollSuggestions((deltaY: number) => {
-    const el = suggestionsContainerRef;
+    const el = siteInfoOpen() ? siteInfoPanelRef : suggestionsContainerRef;
     if (el) {
       // Pure scroll only — do NOT move the keyboard selection or call
       // scrollIntoView, otherwise the list snaps back to keep the selected
@@ -668,6 +669,7 @@ export function Toolbar() {
 
             <Show when={siteInfoOpen()}>
               <div
+                ref={siteInfoPanelRef}
                 id="awrit-site-info"
                 class="site-info-panel"
                 role="dialog"

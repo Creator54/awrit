@@ -152,6 +152,14 @@ body {
   .floating-palette .input-container { height: 56px; }
   .floating-palette .palette-input { font-size: 16px; }
   .floating-palette:focus-within { border-color: var(--ui-accent); }
+  @media (max-width: 220px) {
+    .floating-palette .zoom-chip { display: none; }
+    .floating-palette .input-container { padding-inline: 8px; gap: 8px; }
+  }
+  @media (max-height: 160px) {
+    .floating-palette { max-height: calc(100dvh - 16px); }
+    .floating-palette .input-container { height: 36px; }
+  }
   .site-info-btn { color: var(--text-muted); background: transparent; border: none; padding: 4px; margin: -4px; border-radius: 6px; cursor: pointer; }
   .site-info-btn:hover, .site-info-btn.open { color: var(--text-primary); background: #2b2a33; }
   .site-info-btn.insecure { color: #e0a64a; }
@@ -159,12 +167,12 @@ body {
   .zoom-chip { flex: none; color: var(--text-muted); background: transparent; border: none; font-size: 12px; font-variant-numeric: tabular-nums; padding: 2px 6px; margin-left: 8px; border-radius: 4px; cursor: pointer; }
   .zoom-chip:hover { color: var(--text-primary); background: #2b2a33; }
   .zoom-chip:focus-visible { outline: 2px solid #8f8f9d; }
-  .site-info-panel { padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c4c4cc; }
+  .site-info-panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 16px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c4c4cc; overflow-wrap: anywhere; }
   .site-info-host { font-size: 14px; color: var(--text-primary); word-break: break-all; }
-  .site-info-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .site-info-row { display: flex; flex: none; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; }
   .site-info-row.muted { color: var(--text-muted); font-size: 12px; }
   .site-info-row.insecure { color: #e0a64a; }
-  .site-info-choice { display: flex; background: #1c1b22; border-radius: 6px; padding: 2px; gap: 2px; }
+  .site-info-choice { display: flex; flex-wrap: wrap; background: #1c1b22; border-radius: 6px; padding: 2px; gap: 2px; }
   .site-info-choice button { color: var(--text-muted); background: transparent; border: none; font-size: 12px; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
   .site-info-choice button:hover { color: var(--text-primary); }
   .site-info-choice button.active { background: #3a3945; color: var(--text-primary); }
