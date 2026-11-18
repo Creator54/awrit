@@ -37,6 +37,21 @@ test('IME candidate keys do not navigate Find or dismiss toolbar popups', () => 
 });
 
 
+test('Escape in the permission prompt does not reach the underlying toolbar', () => {
+  const start = source.indexOf('onKeyDown={(e) => {', source.indexOf('class="permission-palette"'));
+  const end = source.indexOf('\n              }}', start);
+  const calls: string[] = [];
+  const expression = source.slice(start, end + '\n              }'.length).replace('onKeyDown={', '');
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(`const onKeyDown = ${expression};`);
+  const onKeyDown = new Function('window', 'req', 'setPermissionReq', `${code}; return onKeyDown;`)(
+    { ipc: { resolvePermission: () => calls.push('deny') } },
+    () => ({ id: 1, url: 'https://example.test', permission: 'geolocation' }),
+    () => calls.push('dismiss'),
+  );
+  onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation: () => calls.push('stop') });
+  expect(calls).toEqual(['stop', 'deny', 'dismiss']);
+});
+
 test('hiding Find cancels a queued search and hidden callbacks cannot search', () => {
   let visible = true;
   let callback!: (text: string) => void;

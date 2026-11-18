@@ -983,6 +983,7 @@ export function Toolbar() {
                   buttons[(next + buttons.length) % buttons.length]?.focus();
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
+                  e.stopPropagation();
                   window.ipc.resolvePermission(
                     req().id,
                     false,
