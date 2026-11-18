@@ -316,6 +316,23 @@ describe('ADB Control', () => {
     expect(timers.size).toBe(0);
   });
 
+  test('control tooltip stays inside a short, narrow viewport', () => {
+    const html = getAdbHtml(1080, 1920);
+    const start = html.indexOf('function showControlTip(');
+    const end = html.indexOf('function hideControlTip(', start);
+    const tip = { hidden: true, textContent: '', offsetWidth: 90, offsetHeight: 24, style: {} };
+    const context = vm.createContext({ controlTip: tip, window: { innerWidth: 160, innerHeight: 100 } });
+    vm.runInContext(html.slice(start, end), context);
+    context.button = {
+      getBoundingClientRect: () => ({ left: 106, width: 44, top: 48, bottom: 92 }),
+      getAttribute: () => 'Volume down',
+    };
+    vm.runInContext('showControlTip(button)', context);
+    expect(tip.hidden).toBe(false);
+    expect(tip.textContent).toBe('Volume down');
+    expect(tip.style).toEqual({ left: '66px', top: '20px' });
+  });
+
   test('contextual controls preserve local keyboard focus and return keys to Android', async () => {
     const requests: string[] = [];
     const handlers: Record<string, (event: any) => void> = {};
