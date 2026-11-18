@@ -13,11 +13,11 @@ test('IME candidate keys do not navigate Find or dismiss toolbar popups', () => 
   const calls: string[] = [];
   const find = handler('handleFindKeyDown', '\n  const getUrlOrSearch', {
     navigateFind: () => calls.push('cancel', 'search'),
-    window: { ipc: { toggleFind: () => calls.push('close'), stopFindInPage: () => calls.push('stop') } },
+    window: { ipc: { toggleFind: () => calls.push('close') } },
   });
   const global = handler('handleGlobalKeyDown', '\n    window.addEventListener', {
     permissionReq: () => null, keyHelp: () => ({ visible: false }), findVisible: () => true,
-    window: { ipc: { toggleFind: () => calls.push('close'), stopFindInPage: () => calls.push('stop') } },
+    window: { ipc: { toggleFind: () => calls.push('close') } },
   });
   const url = handler('handleKeyDown', '\n  createEffect', {
     getSuggestions: () => { calls.push('suggestions'); return []; }, selectedIndex: () => -1, url: () => '',
@@ -33,7 +33,7 @@ test('IME candidate keys do not navigate Find or dismiss toolbar popups', () => 
   find({ key: 'Enter', stopPropagation() {} });
   expect(calls).toEqual(['cancel', 'search']);
   global({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
-  expect(calls.slice(-2)).toEqual(['close', 'stop']);
+  expect(calls).toEqual(['cancel', 'search', 'close']);
 });
 
 

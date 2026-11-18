@@ -990,12 +990,7 @@ export async function createWindowWithToolbar(
 
         if (this.omniboxVisible) {
           if (this.keyHelpVisible) this.toggleKeyHelp();
-          if (this.findVisible) {
-            this.findVisible = false;
-            if (!this.toolbar.webContents.isLoading()) {
-              this.toolbar.webContents.send('toolbar:toggle-find', false);
-            }
-          }
+          if (this.findVisible) this.toggleFind();
           loadToolbarContent();
         }
 
@@ -1035,6 +1030,8 @@ export async function createWindowWithToolbar(
           if (this.keyHelpVisible) this.toggleKeyHelp();
           this.omniboxVisible = false;
           loadToolbarContent();
+        } else {
+          this.content.webContents.stopFindInPage('clearSelection');
         }
 
         const sendSignal = () => {
@@ -1055,7 +1052,7 @@ export async function createWindowWithToolbar(
         if (this.findVisible) {
           this.toolbar.focusOnWebView();
           this.toolbar.focus();
-        } else {
+        } else if (!this.omniboxVisible && !this.keyHelpVisible) {
           this.content.focusOnWebView();
           this.content.focus();
         }
@@ -1185,12 +1182,7 @@ export async function createWindowWithToolbar(
 
         if (this.keyHelpVisible) {
           if (this.omniboxVisible) this.toggleOmnibox();
-          if (this.findVisible) {
-            this.findVisible = false;
-            if (!this.toolbar.webContents.isLoading()) {
-              this.toolbar.webContents.send('toolbar:toggle-find', false);
-            }
-          }
+          if (this.findVisible) this.toggleFind();
           loadToolbarContent();
           const bindings = getAllKeyBindings();
 

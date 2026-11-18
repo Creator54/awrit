@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./windows.ts', import.meta.url), 'utf8');
@@ -16,18 +16,19 @@ function createView(omniboxVisible: boolean) {
   let focused = '';
   const transitions = new Function('loadToolbarContent', 'getAllKeyBindings', 'setTimeout', 'options',
     `return ({${methods.join('\n')}});`)(() => {}, () => [], () => {}, {});
+  const stopFindInPage = mock(() => {});
   const view = {
     ...transitions,
     omniboxVisible,
     keyHelpVisible: !omniboxVisible,
     findVisible: false,
-    content: { webContents: { invalidate: () => {} }, focusOnWebView: () => {}, focus: () => { focused = 'page'; } },
+    content: { webContents: { invalidate: () => {}, stopFindInPage }, focusOnWebView: () => {}, focus: () => { focused = 'page'; } },
     toolbar: {
       webContents: { isLoading: () => false, send: (...args: unknown[]) => sent.push(args) },
       focusOnWebView: () => {}, focus: () => { focused = 'toolbar'; }, setIgnoreMouseEvents: () => {},
     },
   };
-  return { view, sent, focused: () => focused };
+  return { view, sent, stopFindInPage, focused: () => focused };
 }
 
 test('opening shortcut help closes the address bar before showing help', () => {
@@ -53,6 +54,21 @@ test('opening the address bar closes shortcut help before showing the address ba
   view.toggleOmnibox();
   expect(view.keyHelpVisible).toBe(false);
   expect(focused()).toBe('page');
+});
+
+test.each(['toggleFind', 'toggleOmnibox', 'toggleKeyHelp'] as const)('%s clears page highlights when closing Find', (action) => {
+  const { view, sent, stopFindInPage, focused } = createView(false);
+  view.keyHelpVisible = false;
+  view.toggleFind();
+  expect(stopFindInPage).not.toHaveBeenCalled();
+  sent.length = 0;
+
+  view[action]();
+  expect(view.findVisible).toBe(false);
+  expect(stopFindInPage).toHaveBeenCalledTimes(1);
+  expect(stopFindInPage).toHaveBeenCalledWith('clearSelection');
+  expect(sent[0]).toEqual(['toolbar:toggle-find', false]);
+  expect(focused()).toBe(action === 'toggleFind' ? 'page' : 'toolbar');
 });
 
 test('opening Find closes shortcut help before showing Find', () => {
