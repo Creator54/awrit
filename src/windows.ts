@@ -989,6 +989,7 @@ export async function createWindowWithToolbar(
         };
 
         if (this.omniboxVisible) {
+          if (this.keyHelpVisible) this.toggleKeyHelp();
           if (this.findVisible) {
             this.findVisible = false;
             if (!this.toolbar.webContents.isLoading()) {
