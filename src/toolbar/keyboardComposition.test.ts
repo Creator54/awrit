@@ -52,6 +52,30 @@ test('Escape in the permission prompt does not reach the underlying toolbar', ()
   expect(calls).toEqual(['stop', 'deny', 'dismiss']);
 });
 
+test('a queued shortcut help update cannot move focus behind a permission prompt', () => {
+  const start = source.indexOf('  window.ipc.onSetKeyHelpVisible(');
+  const end = source.indexOf('\n  const [loadingUrl', start);
+  const callbacks: Array<() => void> = [];
+  let showHelp = (_data: { visible: boolean }) => { throw new Error('Missing shortcut help listener'); };
+  let pending = false;
+  let focused = 0;
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  new Function('window', 'document', 'HTMLElement', 'setShortcutQuery', 'setKeyHelp', 'queueMicrotask',
+    'shortcutSearch', 'permissionReq', `let helpReturnFocus; ${code}`)(
+    { ipc: { onSetKeyHelpVisible: (callback: typeof showHelp) => { showHelp = callback; } } },
+    { activeElement: null }, class {}, () => {}, () => {}, (fn: () => void) => callbacks.push(fn),
+    { focus: () => { focused++; } }, () => pending,
+  );
+  showHelp({ visible: true });
+  pending = true;
+  callbacks.shift()?.();
+  expect(focused).toBe(0);
+  pending = false;
+  showHelp({ visible: true });
+  callbacks.shift()?.();
+  expect(focused).toBe(1);
+});
+
 test('permission prompt replacement preserves the original return focus', () => {
   const start = source.indexOf('  let permissionReturnFocus:');
   const end = source.indexOf('\n\n  window.ipc.onSitePermissionsChanged', start);

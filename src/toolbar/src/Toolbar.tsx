@@ -43,6 +43,7 @@ export function Toolbar() {
     }
     setKeyHelp({ visible: data.visible, bindings: data.bindings ?? [] });
     queueMicrotask(() => {
+      if (permissionReq()) return;
       if (data.visible) shortcutSearch?.focus();
       else if (helpReturnFocus?.isConnected) helpReturnFocus.focus();
     });
@@ -138,6 +139,7 @@ export function Toolbar() {
   const dismissPermissionPrompt = () => {
     setPermissionReq(null);
     if (permissionReturnFocus?.isConnected) permissionReturnFocus.focus();
+    else if (keyHelp().visible) shortcutSearch?.focus();
     else if (findVisible()) findInputRef?.focus();
     else if (omniboxVisible()) inputRef?.focus();
     permissionReturnFocus = null;
