@@ -13,7 +13,7 @@ test('shared review asks for a chat only during send, without a dropdown or poll
   expect(source).not.toContain('<select');
   expect(source).not.toContain('Refresh connected agents');
   expect(source).not.toContain('setInterval');
-  expect(source).toContain('Send to which chat?');
+  expect(source).toContain('Choose a chat');
   expect(source).toContain('recipientNotes = notes');
 });
 

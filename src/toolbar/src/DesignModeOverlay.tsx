@@ -985,7 +985,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
             <button
               class="design-review-send px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors [@media(max-width:200px)]:px-1.5 [@media(max-height:127px)]:py-0.5"
               disabled={pendingNotes().length === 0 || isSaving()}
-              title="Send all unsent feedback"
+              title="Send all unsent notes"
               onClick={() => send()}
             >
               {isSaving() ? 'Sending…' : `Send all (${pendingNotes().length})`}
@@ -1003,7 +1003,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
           <div class="flex min-h-0 max-w-full flex-col items-center gap-1 overflow-y-auto overscroll-contain">
             <Show when={recipients().length > 0 && !recipient()}>
               <div role="group" aria-label="Send feedback to" class="flex flex-col gap-1 p-2 rounded-lg border bg-[var(--ui-bg)] text-[var(--ui-text)] text-xs w-full break-words">
-                <span>Send to which chat?</span>
+                <span>Choose a chat</span>
                 <For each={recipients()}>{client => (
                   <button type="button" disabled={isSaving()} class="text-left px-2 py-1 rounded hover:opacity-80 disabled:opacity-50" onClick={() => chooseRecipient(client.id)}>{client.label}</button>
                 )}</For>
@@ -1012,7 +1012,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
             </Show>
             <Show when={deletedNote()}>
               <div role="status" class="flex flex-wrap justify-center items-center gap-2 max-w-full px-3 py-1 bg-[var(--ui-surface)] border border-[var(--ui-line-strong)] rounded-lg text-xs text-[var(--ui-text)]">
-                Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo delete</button>
+                Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo</button>
               </div>
             </Show>
             <Show
@@ -1038,8 +1038,8 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                         }
                       }}
                     />
-                    <span class="text-[11px] text-[var(--ui-muted)]">↵ Send · ⇧↵ New line</span>
-                    <span>{isAdb() || frameSource()?.kind === 'terminal' ? 'or drag to comment' : 'or click or drag to comment'}</span>
+                    <span class="text-[11px] text-[var(--ui-muted)] [@media(max-height:127px)]:hidden">↵ Send · ⇧↵ New line</span>
+                    <span class="[@media(max-height:127px)]:hidden">{isAdb() || frameSource()?.kind === 'terminal' ? 'Drag to add a note' : 'Click or drag to add a note'}</span>
                     <Show when={!isAdb() && frameSource()?.kind !== 'terminal'}>
                       <span class="text-[11px] text-[var(--ui-muted)]">↑ ↓ adjust element · Shift+click adds to note</span>
                     </Show>
@@ -1161,8 +1161,8 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                       class="design-review-note-send shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full disabled:opacity-50"
                       disabled={isSaving() || wasSent(ann()) || !ann().comment.trim()}
                       onClick={() => send([ann()])}
-                      aria-label={wasSent(ann()) ? 'Note accepted' : sendingNoteIds().includes(ann().id) ? 'Sending note' : 'Send this note'}
-                      title={wasSent(ann()) ? 'Accepted' : ann().comment.trim() ? 'Send only this note' : 'Write feedback before sending'}
+                      aria-label={wasSent(ann()) ? 'Note sent' : sendingNoteIds().includes(ann().id) ? 'Sending note' : 'Send note'}
+                      title={wasSent(ann()) ? 'Sent' : ann().comment.trim() ? 'Send this note' : 'Write a note first'}
                     >
                       <Show when={!sendingNoteIds().includes(ann().id)} fallback={<span aria-hidden="true">…</span>}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
