@@ -47,6 +47,43 @@ describe('DesignModeOverlay regressions', () => {
     'utf8',
   );
 
+  test('note card takes over wheel scrolling only at the editor edge', () => {
+    const start = overlaySource.indexOf('onWheel={(e) => {');
+    const end = overlaySource.indexOf('\n                    }}', start);
+    class Editor {
+      scrollTop = 20;
+      scrollHeight = 100;
+      readonly clientHeight = 50;
+    }
+    const editor = new Editor();
+    const card = { scrollTop: 40, scrollHeight: 140, clientHeight: 60 };
+    const onWheel = new Function('HTMLTextAreaElement', 'WheelEvent',
+      `return (${overlaySource.slice(start + 'onWheel={'.length, end)} })`)(
+      Editor, { DOM_DELTA_PAGE: 2, DOM_DELTA_LINE: 1 },
+    );
+    let prevented = 0;
+    const wheel = (deltaY: number, ctrlKey = false) => onWheel({
+      target: editor, currentTarget: card, deltaY, ctrlKey, deltaMode: 0,
+      preventDefault: () => { prevented++; },
+    });
+    wheel(10);
+    editor.scrollTop = 50;
+    wheel(10, true);
+    wheel(-10);
+    expect(card.scrollTop).toBe(40);
+    expect(prevented).toBe(0);
+    wheel(10);
+    expect(card.scrollTop).toBe(50);
+    editor.scrollTop = 0;
+    wheel(-10);
+    expect(card.scrollTop).toBe(40);
+    expect(prevented).toBe(2);
+    editor.scrollHeight = editor.clientHeight;
+    wheel(10);
+    expect(card.scrollTop).toBe(50);
+    expect(prevented).toBe(3);
+  });
+
   test('native review backing pages do not receive the website white background', () => {
     const source = readFileSync(new URL('../windows.ts', import.meta.url), 'utf8');
     const start = source.indexOf('      if (!transparent && !terminalReview) {\n        // The native review');

@@ -110,6 +110,18 @@ body {
 .design-review .design-review-note-send:hover:not(:disabled) { background: #1c4daa; }
 .design-review .design-review-note-send:active:not(:disabled) { background: #153c87; }
 .design-review-comment { box-shadow: 0 6px 24px #18202a26; }
+@media (max-height: 127px) {
+  .design-review .design-review-comment {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-auto-rows: min-content;
+    align-items: center;
+  }
+  .design-review-comment > textarea { height: 2.25rem; grid-row: 1; }
+  .design-review-note-actions { grid-row: 1; }
+  .design-review-note-actions > span { display: none; }
+  .design-review-note-header { grid-column: 1 / -1; grid-row: 2; }
+}
 .design-review button:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 3px;

@@ -605,7 +605,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
   };
   // In short panes, reserve the top row for Return and Send all.
   const compact = () => viewportDims().height < 200;
-  const bubbleInset = () => compact() ? 48 : 0;
+  const bubbleInset = () => viewportDims().height < 128 ? 38 : compact() ? 48 : 0;
   const bubbleViewport = () => ({ ...viewportDims(), height: Math.max(0, viewportDims().height - bubbleInset()) });
   const bubbleMargin = () => compact() ? 4 : 8;
   const bubbleSize = () => ({
@@ -972,7 +972,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
           onPointerDown={(e) => e.stopPropagation()}
           onPointerMove={(e) => e.stopPropagation()}
         >
-          <div class="design-review-toolbar relative flex shrink-0 max-w-full items-center gap-2 p-1 rounded-full border text-xs">
+          <div class="design-review-toolbar relative flex shrink-0 max-w-full items-center gap-1 p-1 rounded-full border text-xs">
             <div
               class="design-review-grip absolute right-full top-0 bottom-0 flex items-center px-2 cursor-grab select-none"
               title="Drag to move"
@@ -983,27 +983,27 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
             </div>
             <Show when={pendingNotes().length > 0 && (pendingNotes().length > 1 || !selectedAnnotation() || pendingNotes()[0].id !== selectedAnnotationId())}>
             <button
-              class="design-review-send px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors disabled:opacity-50"
+              class="design-review-send px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors [@media(max-width:200px)]:px-1.5 [@media(max-height:127px)]:py-0.5"
               disabled={pendingNotes().length === 0 || isSaving()}
-              title="Send all unsent feedback"
+              title="Send all unsent notes"
               onClick={() => send()}
             >
               {isSaving() ? 'Sending…' : `Send all (${pendingNotes().length})`}
             </button>
             </Show>
             <button
-              class="px-3 py-1.5 text-xs font-medium rounded-full hover:bg-white/10 transition-colors"
+              class="px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors [@media(max-width:200px)]:px-1.5 [@media(max-height:127px)]:py-0.5"
               title="Return to app (Escape)"
               aria-label="Return to app"
               onClick={() => props.onExit()}
             >
-              <Icon name="play" class="inline w-4 h-4" />
+              Return
             </button>
           </div>
           <div class="flex min-h-0 max-w-full flex-col items-center gap-1 overflow-y-auto overscroll-contain">
             <Show when={recipients().length > 0 && !recipient()}>
               <div role="group" aria-label="Send feedback to" class="flex flex-col gap-1 p-2 rounded-lg border bg-[var(--ui-bg)] text-[var(--ui-text)] text-xs w-full break-words">
-                <span>Send to which chat?</span>
+                <span>Choose a chat</span>
                 <For each={recipients()}>{client => (
                   <button type="button" disabled={isSaving()} class="text-left px-2 py-1 rounded hover:opacity-80 disabled:opacity-50" onClick={() => chooseRecipient(client.id)}>{client.label}</button>
                 )}</For>
@@ -1012,21 +1012,21 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
             </Show>
             <Show when={deletedNote()}>
               <div role="status" class="flex flex-wrap justify-center items-center gap-2 max-w-full px-3 py-1 bg-[var(--ui-surface)] border border-[var(--ui-line-strong)] rounded-lg text-xs text-[var(--ui-text)]">
-                Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo delete</button>
+                Note deleted<button class="underline underline-offset-2" onClick={undoDelete}>Undo</button>
               </div>
             </Show>
             <Show
               when={saveStatus()}
               fallback={
                 <Show when={annotations().length === 0}>
-                  <div class="flex flex-col items-center gap-1 max-w-full break-words px-3 py-2 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] text-center text-xs text-[var(--ui-text)]">
+                  <div class="flex flex-col items-center gap-1 max-w-full break-words px-3 py-2 rounded-xl border border-[var(--ui-line)] bg-[var(--ui-surface)] text-center text-xs text-[var(--ui-text)] [@media(max-height:127px)]:p-1">
                     <textarea
                       ref={(el) => queueMicrotask(() => el.focus())}
                       rows={2}
                       spellcheck={false}
                       aria-label="Ask the agent about this page"
-                      class="awrit-feedback-input w-72 max-w-full shrink-0 box-border px-3 py-2 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none"
-                      placeholder="Ask the agent about this page…"
+                      class="awrit-feedback-input w-72 max-w-full shrink-0 box-border px-3 py-2 text-xs bg-[var(--ui-bg)] border border-[var(--ui-line-strong)] rounded-lg text-[var(--ui-text)] focus:outline-none focus:border-[var(--ui-accent)] resize-none [@media(max-height:127px)]:h-8 [@media(max-height:127px)]:px-2 [@media(max-height:127px)]:py-1"
+                      placeholder="Ask about this page…"
                       onKeyDown={(e) => {
                         if (e.isComposing || e.keyCode === 229) return;
                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1038,8 +1038,8 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                         }
                       }}
                     />
-                    <span class="text-[11px] text-[var(--ui-muted)]">↵ Send · ⇧↵ New line</span>
-                    <span>{isAdb() || frameSource()?.kind === 'terminal' ? 'or drag to comment' : 'or click or drag to comment'}</span>
+                    <span class="text-[11px] text-[var(--ui-muted)] [@media(max-height:127px)]:hidden">↵ Send · ⇧↵ New line</span>
+                    <span class="[@media(max-height:127px)]:hidden">{isAdb() || frameSource()?.kind === 'terminal' ? 'Drag to add a note' : 'Click or drag to add a note'}</span>
                     <Show when={!isAdb() && frameSource()?.kind !== 'terminal'}>
                       <span class="text-[11px] text-[var(--ui-muted)]">↑ ↓ adjust element · Shift+click adds to note</span>
                     </Show>
@@ -1081,8 +1081,20 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                     }}
                     onPointerDown={(e) => e.stopPropagation()}
                     onPointerMove={(e) => e.stopPropagation()}
+                    onWheel={(e) => {
+                      if (!(e.target instanceof HTMLTextAreaElement) || e.deltaY === 0 || e.ctrlKey) return;
+                      const editor = e.target;
+                      const atEdge = e.deltaY < 0 ? editor.scrollTop <= 0
+                        : editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
+                      if (!atEdge || e.currentTarget.scrollHeight <= e.currentTarget.clientHeight) return;
+                      // Chromium can keep wheel scrolling latched to the editor at its edge.
+                      e.preventDefault();
+                      const step = e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.currentTarget.clientHeight
+                        : e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+                      e.currentTarget.scrollTop += e.deltaY * step;
+                    }}
                   >
-                    <div class="flex shrink-0 items-center gap-1 text-[11px] text-[var(--ui-muted)]">
+                    <div class="design-review-note-header flex shrink-0 items-center gap-1 text-[11px] text-[var(--ui-muted)]">
                       <span class="mr-auto truncate">
                         #{annotations().findIndex((a) => a.id === ann().id) + 1} {kindLabel(ann())}
                       </span>
@@ -1143,14 +1155,14 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
                         }
                       }}
                     />
-                    <div class="flex shrink-0 items-center justify-between gap-2 text-[10px] text-[var(--ui-muted)]">
+                    <div class="design-review-note-actions flex shrink-0 items-center justify-between gap-2 text-[10px] text-[var(--ui-muted)]">
                       <span title="Enter sends · Shift+Enter adds a new line">↵ Send · ⇧↵ New line</span>
                       <button
                       class="design-review-note-send shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full disabled:opacity-50"
                       disabled={isSaving() || wasSent(ann()) || !ann().comment.trim()}
                       onClick={() => send([ann()])}
-                      aria-label={wasSent(ann()) ? 'Note accepted' : sendingNoteIds().includes(ann().id) ? 'Sending note' : 'Send this note'}
-                      title={wasSent(ann()) ? 'Accepted' : ann().comment.trim() ? 'Send only this note' : 'Write feedback before sending'}
+                      aria-label={wasSent(ann()) ? 'Note sent' : sendingNoteIds().includes(ann().id) ? 'Sending note' : 'Send note'}
+                      title={wasSent(ann()) ? 'Sent' : ann().comment.trim() ? 'Send this note' : 'Write a note first'}
                     >
                       <Show when={!sendingNoteIds().includes(ann().id)} fallback={<span aria-hidden="true">…</span>}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
