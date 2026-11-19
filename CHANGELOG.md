@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.2.2](https://github.com/Creator54/awrit/compare/v2.2.1...v2.2.2) (2026-11-19)
+
+
+### Fixes
+
+* clear page highlights when Find closes ([49ada8d](https://github.com/Creator54/awrit/commit/49ada8ddb744db90656ca2782cb70af7d7f4cc3e))
+* close address bar before shortcut help ([4c69042](https://github.com/Creator54/awrit/commit/4c690421615ee1866d10cc8451cc2d20e8f7b695))
+* close shortcut help before opening address bar ([4b495b8](https://github.com/Creator54/awrit/commit/4b495b89fcc624debb1bded30dea45409d6a08a9))
+* close shortcut help before opening Find ([0c14492](https://github.com/Creator54/awrit/commit/0c14492a8afe8d0b49a9111500ee39f9b11e38ea))
+* fit Android controls in narrow panes ([eafd72c](https://github.com/Creator54/awrit/commit/eafd72c3226bf31aa3a9d9fcb80cb12d33c194b5))
+* fit Find controls in very short panes ([03c6513](https://github.com/Creator54/awrit/commit/03c65136db5c620e9d138621f5d39fcfa33b4563))
+* fit permission buttons in very short panes ([cad529f](https://github.com/Creator54/awrit/commit/cad529f9ebb1a1348b3b4219b5c742fecc77c84a))
+* give the omnibox more room in wide panes ([0c46025](https://github.com/Creator54/awrit/commit/0c46025223427801b3756166b941ea72df349975))
+* guard shortcut focus during permission prompts ([0c8d827](https://github.com/Creator54/awrit/commit/0c8d82752d49abc940c31ba2c91080e67d977c3a))
+* ignore stale permission responses before routing input ([220c5d5](https://github.com/Creator54/awrit/commit/220c5d5b95207a51a32d23aa7f3b4284e08ac762))
+* keep controls usable in small panes ([41767d0](https://github.com/Creator54/awrit/commit/41767d03d86383abe4ca8f9d06fd47c9fb8e3de0))
+* keep delayed focus out of permission prompts ([036a9df](https://github.com/Creator54/awrit/commit/036a9df14b3792512b9f99f91371325974f3dcd2))
+* keep macOS owner socket paths within limit ([7badc14](https://github.com/Creator54/awrit/commit/7badc1428417627fe13ab84c94712b3046af5990))
+* keep permission Escape from closing other panels ([1936543](https://github.com/Creator54/awrit/commit/193654384e70a5afeb4d37afb3ad9a363d6c98aa))
+* keep permission focus on address bar close ([37d09f9](https://github.com/Creator54/awrit/commit/37d09f915feb70d9b9173e24dd6c5c9bab8af735))
+* keep shortcut search visible in short panes ([6f96a64](https://github.com/Creator54/awrit/commit/6f96a64a03a1bd59961d684cc2654e8f5bdbaf0d))
+* keep site controls usable in small panes ([9b08f8f](https://github.com/Creator54/awrit/commit/9b08f8f7b92827d9df906649dec043c855f7dc54))
+* open Find after the toolbar finishes loading ([7abb280](https://github.com/Creator54/awrit/commit/7abb280794ce740bb3378b751393d087ffc075e2))
+* preserve focus when clearing Find query ([e5c1719](https://github.com/Creator54/awrit/commit/e5c1719cf748d68c1674ee28f6372d26d2a2982d))
+* preserve toolbar input when exiting Design Mode ([6f74477](https://github.com/Creator54/awrit/commit/6f74477697ca7cfa50735c3f69e911c7bc2942a9))
+* preserve WebGL in standalone snapshots ([7aa58ee](https://github.com/Creator54/awrit/commit/7aa58ee04a9304da41b86a789e0a8b9e6106e853))
+* prioritize review editors in short panes ([2ccf6b1](https://github.com/Creator54/awrit/commit/2ccf6b167d7d230dec7dfc7c230c4b0b4c3f3392))
+* restore Design Mode focus after permission prompts ([c6ebfd5](https://github.com/Creator54/awrit/commit/c6ebfd51147703eec5944b8eec0e0246d5953c5f))
+* restore toolbar control after permission prompt ([cdb1ff3](https://github.com/Creator54/awrit/commit/cdb1ff3237356cc4073299a4127834fc44556ce9))
+* route pointer input to permission prompts ([b5bd09f](https://github.com/Creator54/awrit/commit/b5bd09f0b75ed669bb26696352868f9687abc0fd))
+* route remote paste to active toolbar overlays ([4592cba](https://github.com/Creator54/awrit/commit/4592cbada1cd81e73515dfe51d4825bf36abf208))
+* scroll note cards at editor boundaries ([4ccc263](https://github.com/Creator54/awrit/commit/4ccc2637aa020e211cd304404ddbee35bb667226))
+* trim copy in compact review controls ([03e4851](https://github.com/Creator54/awrit/commit/03e48514f4e60b0d40e5994d5134f6a9f1d46c9e))
+
 ## [2.2.1](https://github.com/Creator54/awrit/compare/v2.2.0...v2.2.1) (2026-11-16)
 
 
