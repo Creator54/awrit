@@ -1155,7 +1155,7 @@ export async function createWindowWithToolbar(
           captureAndSend();
 
           if (this.toolbar.webContents.isLoading()) {
-            this.toolbar.webContents.once('did-finish-load', sendDesignModeSignal);
+            this.toolbar.webContents.once('did-stop-loading', sendDesignModeSignal);
           } else {
             sendDesignModeSignal();
             setTimeout(sendDesignModeSignal, 50);
