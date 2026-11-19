@@ -1041,7 +1041,8 @@ export async function createWindowWithToolbar(
         };
 
         if (this.findVisible && this.toolbar.webContents.isLoading()) {
-          this.toolbar.webContents.once('did-finish-load', sendSignal);
+          // isLoading() can still be true during did-finish-load.
+          this.toolbar.webContents.once('did-stop-loading', sendSignal);
         } else {
           sendSignal();
         }

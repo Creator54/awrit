@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 
 const source = readFileSync(new URL('./windows.ts', import.meta.url), 'utf8');
 
@@ -14,6 +15,11 @@ function createView(omniboxVisible: boolean) {
   });
   const sent: unknown[][] = [];
   let focused = '';
+  const toolbarContents = Object.assign(new EventEmitter(), {
+    loading: false,
+    isLoading() { return this.loading; },
+    send: (...args: unknown[]) => sent.push(args),
+  });
   const transitions = new Function('loadToolbarContent', 'getAllKeyBindings', 'setTimeout', 'options',
     `return ({${methods.join('\n')}});`)(() => {}, () => [], () => {}, {});
   const stopFindInPage = mock(() => {});
@@ -25,7 +31,7 @@ function createView(omniboxVisible: boolean) {
     permissionPending: false,
     content: { webContents: { invalidate: () => {}, stopFindInPage }, focusOnWebView: () => {}, focus: () => { focused = 'page'; } },
     toolbar: {
-      webContents: { isLoading: () => false, send: (...args: unknown[]) => sent.push(args) },
+      webContents: toolbarContents,
       focusOnWebView: mock(() => {}), focus: () => { focused = 'toolbar'; }, setIgnoreMouseEvents: mock((_ignore: boolean) => {}),
     },
   };
@@ -100,6 +106,19 @@ test('clearing the Find query clears highlights without moving focus', () => {
   expect(contentContents.stopFindInPage).toHaveBeenCalledWith('clearSelection');
   expect(view.content.focusOnWebView).not.toHaveBeenCalled();
   expect(view.focusedContent).toBe(toolbarContents);
+});
+
+test('first Find open waits until the toolbar stops loading', () => {
+  const { view, sent } = createView(false);
+  view.keyHelpVisible = false;
+  view.toolbar.webContents.loading = true;
+  view.toggleFind();
+
+  view.toolbar.webContents.emit('did-finish-load');
+  expect(sent).toEqual([]);
+  view.toolbar.webContents.loading = false;
+  view.toolbar.webContents.emit('did-stop-loading');
+  expect(sent).toEqual([['toolbar:toggle-find', true]]);
 });
 
 test('opening Find closes shortcut help before showing Find', () => {
