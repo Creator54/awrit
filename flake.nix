@@ -26,8 +26,8 @@
 
     # Per-platform dep hashes — update when bun.lock changes
     depHashes = {
-      "x86_64-linux" = "sha256-zRBZ9XIzTP51rNUYAMbpqSLkp0LD7xw1oO5LUmouS90=";
-      "aarch64-linux" = "sha256-FbuYoZW7TlWBG8oknI0l0MYg8nFuCFr6G6kP0a7SSfQ=";
+      "x86_64-linux" = "sha256-UyM9p9vLlpvvcekUZctISVv2mwv/WGMppz1ypeXkkXQ=";
+      "aarch64-linux" = "sha256-ceeHZVQFtg44VLWYozVvxMdqmLctdA/lSLAOfc3po/k=";
     };
 
     mkAwrit = system: let
