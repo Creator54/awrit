@@ -28,7 +28,9 @@ test('macOS owner socket fits the Unix socket path limit with a long TMPDIR', ()
 });
 
 test('owner discovery survives different shell temporary directories', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'awrit-discovery-test-'));
+  // Keep this test on the XDG runtime path; the test above covers Darwin's fallback.
+  const tempRoot = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = fs.mkdtempSync(path.join(tempRoot, 'awrit-discovery-test-'));
   try {
     const runtime = path.join(root, 'runtime');
     fs.mkdirSync(runtime, { mode: 0o700 });
