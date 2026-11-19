@@ -3,6 +3,24 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./src/Toolbar.tsx', import.meta.url), 'utf8');
 
+test('pane wheel scrolls the visible address panel', () => {
+  const start = source.indexOf('  window.ipc.onScrollSuggestions(');
+  const end = source.indexOf('\n  });', start) + '\n  });'.length;
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  const suggestions = { scrollTop: 0 };
+  const siteInfo = { scrollTop: 0 };
+  let open = false;
+  const scroll = new Function('window', 'suggestionsContainerRef', 'siteInfoPanelRef', 'siteInfoOpen', `${code}; return window.ipc.scroll;`)(
+    { ipc: { onScrollSuggestions(this: { scroll?: (delta: number) => void }, handler: (delta: number) => void) { this.scroll = handler; } } },
+    suggestions, siteInfo, () => open,
+  );
+  scroll(12);
+  open = true;
+  scroll(35);
+  expect(suggestions.scrollTop).toBe(12);
+  expect(siteInfo.scrollTop).toBe(35);
+});
+
 test('site details refresh on navigation and reject closed or superseded replies', async () => {
   const start = source.lastIndexOf('  createEffect(', source.indexOf('window.ipc.getSitePermissions('));
   const end = source.indexOf('\n  const performSearch', start);

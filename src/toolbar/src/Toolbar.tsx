@@ -77,6 +77,7 @@ export function Toolbar() {
   let inputRef: HTMLInputElement | undefined;
   let findInputRef: HTMLInputElement | undefined;
   let suggestionsContainerRef: HTMLDivElement | undefined;
+  let siteInfoPanelRef: HTMLDivElement | undefined;
   let leavingReview = false;
 
   // IPC Listeners
@@ -137,7 +138,7 @@ export function Toolbar() {
   // event forwarded from the main process (offscreen webviews don't reliably
   // scroll from synthetic mouseWheel sendInputEvent).
   window.ipc.onScrollSuggestions((deltaY: number) => {
-    const el = suggestionsContainerRef;
+    const el = siteInfoOpen() ? siteInfoPanelRef : suggestionsContainerRef;
     if (el) {
       // Pure scroll only — do NOT move the keyboard selection or call
       // scrollIntoView, otherwise the list snaps back to keep the selected
@@ -492,71 +493,72 @@ export function Toolbar() {
 
       {/* Find in Page Popup (top-right floating pill aligned with theme) */}
       <Show when={findVisible()}>
-        <div class="fixed top-3 right-4 z-[2500] pointer-events-auto">
+        <div class="fixed top-3 right-4 w-max max-w-[calc(100%-32px)] z-[2500] pointer-events-auto [@media(max-height:100px)]:top-1 [@media(max-height:100px)]:right-2 [@media(max-height:100px)]:max-w-[calc(100%-16px)]">
           <div
-            class="flex items-center gap-2 bg-[#222228] border border-[var(--palette-border)] rounded-xl px-2.5 py-1.5 shadow-xl text-xs text-white"
+            class="flex flex-wrap justify-end items-center gap-2 bg-[#222228] border border-[var(--palette-border)] rounded-xl px-2.5 py-1.5 shadow-xl text-xs text-white [@media(max-height:100px)]:gap-y-1 [@media(max-height:100px)]:px-2 [@media(max-height:100px)]:py-1"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div class="text-[var(--text-muted)] flex items-center">
-              <Icon name="search" class="w-3.5 h-3.5" />
+            <div class="flex min-w-0 flex-[1_1_10.375rem] items-center gap-2 sm:basis-[13.375rem]">
+              <Icon name="search" class="w-3.5 h-3.5 shrink-0 text-[var(--text-muted)]" />
+              <input
+                ref={findInputRef}
+                type="text"
+                class="min-w-0 w-36 grow bg-transparent text-xs text-white placeholder-[#7e7d8d] focus:outline-none sm:w-48"
+                value={findText()}
+                onInput={handleFindInput}
+                onKeyDown={handleFindKeyDown}
+                placeholder="Find in page"
+                spellcheck={false}
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              />
             </div>
 
-            <input
-              ref={findInputRef}
-              type="text"
-              class="w-36 sm:w-48 bg-transparent text-xs text-white placeholder-[#7e7d8d] focus:outline-none"
-              value={findText()}
-              onInput={handleFindInput}
-              onKeyDown={handleFindKeyDown}
-              placeholder="Find in page"
-              spellcheck={false}
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-            />
+            <div class="flex max-w-full flex-wrap justify-end items-center gap-2 [@media(max-height:100px)]:gap-y-0.5">
+              <Show when={findText() && totalMatches() !== null}>
+                <span class="px-1.5 py-0.5 rounded bg-white/10 text-[11px] font-mono text-[#c8c7d4] leading-none whitespace-nowrap">
+                  {totalMatches() ? `${activeMatch()} / ${totalMatches()}` : 'No matches'}
+                </span>
+              </Show>
 
-            <Show when={findText() && totalMatches() !== null}>
-              <span class="px-1.5 py-0.5 rounded bg-white/10 text-[11px] font-mono text-[#c8c7d4] leading-none whitespace-nowrap">
-                {totalMatches() ? `${activeMatch()} / ${totalMatches()}` : 'No matches'}
-              </span>
-            </Show>
+              <div class="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => navigateFind(false)}
+                  class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                  title="Previous (Shift+Enter)"
+                  aria-label="Previous match"
+                >
+                  <Icon name="chevron-up" class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateFind(true)}
+                  class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                  title="Next (Enter)"
+                  aria-label="Next match"
+                >
+                  <Icon name="chevron-down" class="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-            <div class="flex items-center gap-0.5">
+              <div class="w-px h-3.5 bg-white/10 mx-0.5" aria-hidden="true" />
+
               <button
                 type="button"
-                onClick={() => navigateFind(false)}
+                onClick={() => {
+                  window.ipc.toggleFind();
+                  window.ipc.stopFindInPage();
+                }}
                 class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-                title="Previous (Shift+Enter)"
-                aria-label="Previous match"
+                title="Close (Escape)"
+                aria-label="Close find"
               >
-                <Icon name="chevron-up" class="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => navigateFind(true)}
-                class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-                title="Next (Enter)"
-                aria-label="Next match"
-              >
-                <Icon name="chevron-down" class="w-3.5 h-3.5" />
+                <Icon name="clear" class="w-3.5 h-3.5" />
               </button>
             </div>
-
-            <div class="w-px h-3.5 bg-white/10 mx-0.5" aria-hidden="true" />
-
-            <button
-              type="button"
-              onClick={() => {
-                window.ipc.toggleFind();
-                window.ipc.stopFindInPage();
-              }}
-              class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              title="Close (Escape)"
-              aria-label="Close find"
-            >
-              <Icon name="clear" class="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </Show>
@@ -667,6 +669,7 @@ export function Toolbar() {
 
             <Show when={siteInfoOpen()}>
               <div
+                ref={siteInfoPanelRef}
                 id="awrit-site-info"
                 class="site-info-panel"
                 role="dialog"
@@ -895,14 +898,14 @@ export function Toolbar() {
           onClick={() => window.ipc.toggleKeyHelp()}
         >
           <div
-            class="w-[520px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex flex-col bg-[#1c1b22] border border-[#30303a] rounded-xl p-4"
+            class="shortcut-dialog w-[520px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex flex-col overflow-hidden bg-[#1c1b22] border border-[#30303a] rounded-xl p-4 [@media(max-height:200px)]:p-2"
             role="dialog"
             aria-modal="true"
             aria-label="Keyboard shortcuts"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key !== 'Tab') return;
-              const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, summary')].filter(el => el.getClientRects().length > 0);
+              const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, summary, [tabindex="0"]')].filter(el => el.getClientRects().length > 0);
               if (!controls.length) return;
               const index = controls.indexOf(document.activeElement as HTMLElement);
               if ((e.shiftKey && index <= 0) || (!e.shiftKey && index === controls.length - 1)) {
@@ -911,14 +914,14 @@ export function Toolbar() {
               }
             }}
           >
-            <div class="flex items-center justify-between mb-4">
+            <div class="shortcut-heading flex shrink-0 items-center justify-between mb-4 [@media(max-height:200px)]:mb-1">
               <h2 class="text-white/90 text-lg font-semibold">Keyboard shortcuts</h2>
               <button type="button" class="p-1 rounded-lg text-[#c8c7d4] hover:bg-[#30303a] focus-visible:outline-2 focus-visible:outline-[#a0a0b0]" title="Close (Escape)" aria-label="Close keyboard shortcuts" onClick={() => window.ipc.toggleKeyHelp()}>
                 <Icon name="clear" />
               </button>
             </div>
-            <input ref={shortcutSearch} type="search" value={shortcutQuery()} onInput={e => setShortcutQuery(e.currentTarget.value)} aria-label="Search shortcuts" placeholder="Search shortcuts" class="w-full shrink-0 bg-[#222228] border border-[#30303a] rounded-lg px-3 py-2 mb-3 text-sm text-[#fbfbfe] placeholder-[var(--text-muted)] focus-visible:outline-2 focus-visible:outline-[#a0a0b0]" />
-            <div class="awrit-feedback-input min-h-0 overflow-y-auto max-h-[60vh] pr-2 pb-2">
+            <input ref={shortcutSearch} type="search" value={shortcutQuery()} onInput={e => setShortcutQuery(e.currentTarget.value)} aria-label="Search shortcuts" placeholder="Search shortcuts" class="w-full shrink-0 bg-[#222228] border border-[#30303a] rounded-lg px-3 py-2 mb-3 [@media(max-height:200px)]:mb-1 [@media(max-height:200px)]:py-1 text-sm text-[#fbfbfe] placeholder-[var(--text-muted)] focus-visible:outline-2 focus-visible:outline-[#a0a0b0]" />
+            <div class="shortcut-results awrit-feedback-input min-h-0 overflow-y-auto overscroll-contain max-h-[60vh] pr-2 pb-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#a0a0b0]" role="region" aria-label="Shortcut results" tabIndex={0}>
               <Show when={shortcutGroups().length} fallback={<p class="text-sm text-[#c8c7d4] py-3">No matching shortcuts</p>}>
                 <For each={shortcutGroups()}>
                   {group => (
@@ -1014,39 +1017,39 @@ export function Toolbar() {
                           : req().permission}
                   </span>
                 </div>
-                <div class="permission-actions">
-                  <button
-                    ref={(el) => queueMicrotask(() => el.focus())}
-                    class="permission-btn"
-                    onClick={() => {
-                      window.ipc.resolvePermission(
-                        req().id,
-                        false,
-                        req().url,
-                        req().permission,
-                        req().mediaTypes,
-                      );
-                      setPermissionReq(null);
-                    }}
-                  >
-                    Deny
-                  </button>
-                  <button
-                    class="permission-btn primary"
-                    onClick={() => {
-                      window.ipc.resolvePermission(
-                        req().id,
-                        true,
-                        req().url,
-                        req().permission,
-                        req().mediaTypes,
-                      );
-                      setPermissionReq(null);
-                    }}
-                  >
-                    Allow
-                  </button>
-                </div>
+              </div>
+              <div class="permission-actions">
+                <button
+                  ref={(el) => queueMicrotask(() => el.focus())}
+                  class="permission-btn"
+                  onClick={() => {
+                    window.ipc.resolvePermission(
+                      req().id,
+                      false,
+                      req().url,
+                      req().permission,
+                      req().mediaTypes,
+                    );
+                    setPermissionReq(null);
+                  }}
+                >
+                  Deny
+                </button>
+                <button
+                  class="permission-btn primary"
+                  onClick={() => {
+                    window.ipc.resolvePermission(
+                      req().id,
+                      true,
+                      req().url,
+                      req().permission,
+                      req().mediaTypes,
+                    );
+                    setPermissionReq(null);
+                  }}
+                >
+                  Allow
+                </button>
               </div>
             </div>
           </div>

@@ -377,6 +377,9 @@ export function companionLayoutCss(config?: Pick<CompanionConfig, 'layout' | 'co
         width: 100%;
         min-width: 0;
         max-width: 100%;
+        min-height: 0;
+        height: auto;
+        padding: min(24px, 5vh) 16px;
         border-left: none;
         border-right: none;
         border-bottom: ${isMediaLeft ? 'none' : '1px solid #27272a'};
@@ -386,6 +389,8 @@ export function companionLayoutCss(config?: Pick<CompanionConfig, 'layout' | 'co
         flex: ${mediaRatio} 1 0px;
         width: 100%;
         min-width: 0;
+        min-height: 0;
+        height: auto;
       }
     }
   `;
