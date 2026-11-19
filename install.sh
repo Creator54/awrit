@@ -1,11 +1,12 @@
 #!/bin/sh
 # Awrit install/uninstall script.
 #   Install:   curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh
-#   Uninstall: curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh -s -- --uninstall
+#   Uninstall (NixOS): nix profile remove awrit
+#   Uninstall (tarball): curl -fsSL https://raw.githubusercontent.com/Creator54/awrit/electron/install.sh | sh -s -- --uninstall
 #
 # Environment:
 #   AWRIT_VERSION  release tag to install, e.g. v2.1.0 (default: latest)
-#   AWRIT_PREFIX   install root (default: ~/.local)
+#   AWRIT_PREFIX   tarball install root (default: ~/.local; NixOS uses the Nix profile)
 #   NO_COLOR       disable colors
 #   AWRIT_BASE_URL override the download location (for testing)
 set -eu
@@ -84,11 +85,24 @@ for arg in "$@"; do
 done
 
 if [ -n "$UNINSTALL" ]; then
+  if [ -e /etc/NIXOS ]; then
+    note "For a Nix profile install, run: nix profile remove awrit"
+  fi
   do_uninstall
   exit 0
 fi
 
 # --- install -----------------------------------------------------------
+if [ "$(uname -s)" = Linux ] && [ -e /etc/NIXOS ]; then
+  need nix
+  ref=github:$REPO
+  if [ -n "${AWRIT_VERSION:-}" ]; then
+    ref=$ref/$AWRIT_VERSION
+  fi
+  step "Installing Awrit into your Nix profile"
+  exec nix --extra-experimental-features 'nix-command flakes' profile add "$ref"
+fi
+
 need curl
 need tar
 need uname
