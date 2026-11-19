@@ -477,6 +477,34 @@ describe('handleInput', () => {
     );
   });
 
+  test('standalone permission prompts receive clicks instead of the page', () => {
+    const { view, contentWebContents, toolbarWebContents } = createView();
+    focusedView.current = view;
+    view.permissionPending = true;
+    const click = () => {
+      for (const kind of ['mouseDown', 'mouseUp'] as const) {
+        handleInput({ eventType: 'mouse', mouseEvent: { kind, button: 'left', x: 20, y: 30, modifiers: [] } });
+      }
+    };
+    click();
+    expect(toolbarWebContents.events.map(({ type }) => type)).toEqual(['mouseDown', 'mouseUp']);
+    expect(contentWebContents.events).toEqual([]);
+
+    view.permissionPending = false;
+    click();
+    expect(contentWebContents.events.map(({ type }) => type)).toEqual(['mouseDown', 'mouseUp']);
+  });
+
+  test('permission prompt scrolling takes priority over omnibox suggestions', () => {
+    const { view, toolbarWebContents } = createView();
+    focusedView.current = view;
+    view.omniboxVisible = true;
+    view.permissionPending = true;
+    handleInput({ eventType: 'mouse', mouseEvent: { kind: 'scrollDown', x: 20, y: 30, modifiers: [] } });
+    expect(toolbarWebContents.send).not.toHaveBeenCalled();
+    expect(toolbarWebContents.events).toContainEqual(expect.objectContaining({ type: 'mouseWheel', deltaY: -100 }));
+  });
+
   test('a pending permission prompt receives Escape instead of dismissing the overlay', () => {
     const { view, toolbarWebContents } = createView();
     focusedView.current = view;

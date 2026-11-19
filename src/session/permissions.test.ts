@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -23,9 +23,15 @@ async function permissionHarness() {
     id: 42, send: () => {}, session,
     setIgnoreMouseEvents: () => {}, focusOnWebView: () => {},
   });
-  const view = { content: { webContents: page, focusOnWebView: () => {} }, toolbar: {
-    webContents: toolbar, setIgnoreMouseEvents: () => {}, focusOnWebView: () => {},
-  } };
+  const view = {
+    designMode: false,
+    content: { webContents: page, focusOnWebView: mock(() => {}) },
+    toolbar: {
+      webContents: toolbar,
+      setIgnoreMouseEvents: mock((_ignore: boolean) => {}),
+      focusOnWebView: mock(() => {}),
+    },
+  };
   const listeners = new Map<string, (...args: unknown[]) => void>();
   const electron = {
     app: { whenReady: () => Promise.resolve(), getPath: () => '/tmp' },
@@ -52,7 +58,7 @@ async function permissionHarness() {
   });
   await getProfileSession(null);
   if (!check || !request) throw new Error('Permission handlers not installed');
-  return { check, request, page, toolbar, listeners };
+  return { check, request, page, toolbar, listeners, view };
 }
 
 test('websites cannot automatically read the clipboard', async () => {
@@ -86,6 +92,43 @@ test('answered prompts remove destruction listeners and ignore duplicate answers
   expect(results).toEqual([true]);
   expect(harness.page.listenerCount('destroyed')).toBe(0);
   expect(harness.toolbar.listenerCount('destroyed')).toBe(0);
+});
+
+test('a stale response cannot steal focus from the replacement permission prompt', async () => {
+  const { view, page, toolbar, request, listeners } = await permissionHarness();
+  const url = 'https://untrusted.example';
+  const results: boolean[] = [];
+  request(page, 'geolocation', (allowed) => results.push(allowed), { requestingUrl: url });
+  request(page, 'notifications', (allowed) => results.push(allowed), { requestingUrl: url });
+  const answer = listeners.get('toolbar:permission-response');
+  if (!answer) throw new Error('Permission response handler missing');
+  answer({ sender: toolbar }, { id: 1, allowed: false, url, permission: 'geolocation' });
+
+  expect(results).toEqual([false]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(false);
+  expect(view.content.focusOnWebView).not.toHaveBeenCalled();
+
+  answer({ sender: toolbar }, { id: 2, allowed: true, url, permission: 'notifications' });
+  expect(results).toEqual([false, true]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(true);
+  expect(view.content.focusOnWebView).toHaveBeenCalledTimes(1);
+});
+
+test.each([true, false])('permission dismissal restores the input owner (Design Mode: %s)', async (designMode) => {
+  const { view, page, toolbar, request, listeners } = await permissionHarness();
+  view.designMode = designMode;
+  const results: boolean[] = [];
+  const url = 'https://untrusted.example';
+  request(page, 'geolocation', (allowed) => results.push(allowed), { requestingUrl: url });
+  view.toolbar.focusOnWebView.mockClear();
+  const answer = listeners.get('toolbar:permission-response');
+  if (!answer) throw new Error('Permission response handler missing');
+  answer({ sender: toolbar }, { id: 1, allowed: false, url, permission: 'geolocation' });
+
+  expect(results).toEqual([false]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(!designMode);
+  expect(view.toolbar.focusOnWebView).toHaveBeenCalledTimes(designMode ? 1 : 0);
+  expect(view.content.focusOnWebView).toHaveBeenCalledTimes(designMode ? 0 : 1);
 });
 
 for (const destroyed of ['page', 'toolbar'] as const) {

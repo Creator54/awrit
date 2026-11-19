@@ -351,7 +351,7 @@ export function createInputHandler(
         const dpr = layoutContainer.devicePixelRatio;
 
         const isOverlayActive =
-          view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode;
+          view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode || view.permissionPending;
         const isInToolbar = isOverlayActive;
 
         const targetWindow = isInToolbar ? view.toolbar : view.content;
@@ -410,7 +410,7 @@ export function createInputHandler(
         // reliably scroll an offscreen webview, so we scroll the container
         // programmatically in the toolbar. (Vertical wheel only; horizontal
         // wheel still drives page navigation below.)
-        if (view.omniboxVisible && (kind === 'scrollUp' || kind === 'scrollDown')) {
+        if (view.omniboxVisible && !view.permissionPending && (kind === 'scrollUp' || kind === 'scrollDown')) {
           const direction = kind === 'scrollDown' ? 1 : -1;
           view.toolbar.webContents.send('toolbar:scroll-suggestions', direction * WHEEL_DELTA);
           return true;

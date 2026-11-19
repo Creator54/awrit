@@ -43,6 +43,7 @@ export function Toolbar() {
     }
     setKeyHelp({ visible: data.visible, bindings: data.bindings ?? [] });
     queueMicrotask(() => {
+      if (permissionReq()) return;
       if (data.visible) shortcutSearch?.focus();
       else if (helpReturnFocus?.isConnected) helpReturnFocus.focus();
     });
@@ -116,7 +117,7 @@ export function Toolbar() {
       setUrl(lastCommittedUrl());
       setSelectedIndex(-1);
       urlFocusTimer = setTimeout(() => {
-        if (!omniboxVisible()) return;
+        if (!omniboxVisible() || permissionReq()) return;
         inputRef?.focus();
         inputRef?.select();
       }, 50);
@@ -126,9 +127,23 @@ export function Toolbar() {
     if (!omniboxVisible()) clearTimeout(urlFocusTimer);
   });
 
+  let permissionReturnFocus: HTMLElement | null = null;
   window.ipc.onPermissionRequest((req) => {
+    if (!permissionReq()) {
+      const active = document.activeElement;
+      permissionReturnFocus = active instanceof HTMLElement && active !== document.body ? active : null;
+    }
     setPermissionReq(req);
   });
+
+  const dismissPermissionPrompt = () => {
+    setPermissionReq(null);
+    if (permissionReturnFocus?.isConnected) permissionReturnFocus.focus();
+    else if (keyHelp().visible) shortcutSearch?.focus();
+    else if (findVisible()) findInputRef?.focus();
+    else if (omniboxVisible()) inputRef?.focus();
+    permissionReturnFocus = null;
+  };
 
   window.ipc.onSitePermissionsChanged((perms) => {
     setSitePerms(perms || {});
@@ -159,7 +174,7 @@ export function Toolbar() {
     if (isVisible) {
       setOmniboxVisible(false);
       findFocusTimer = setTimeout(() => {
-        if (!findVisible()) return;
+        if (!findVisible() || permissionReq()) return;
         findInputRef?.focus();
         findInputRef?.select();
       }, 50);
@@ -450,7 +465,7 @@ export function Toolbar() {
       const req = permissionReq();
       if (req && e.key === 'Escape') {
         window.ipc.resolvePermission(req.id, false, req.url, req.permission, req.mediaTypes);
-        setPermissionReq(null);
+        dismissPermissionPrompt();
       } else if (keyHelp().visible && e.key === 'Escape') {
         window.ipc.toggleKeyHelp();
       } else if (findVisible() && e.key === 'Escape') {
@@ -966,7 +981,7 @@ export function Toolbar() {
                   req().permission,
                   req().mediaTypes,
                 );
-                setPermissionReq(null);
+                dismissPermissionPrompt();
               }}
             />
             <div
@@ -983,6 +998,7 @@ export function Toolbar() {
                   buttons[(next + buttons.length) % buttons.length]?.focus();
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
+                  e.stopPropagation();
                   window.ipc.resolvePermission(
                     req().id,
                     false,
@@ -990,7 +1006,7 @@ export function Toolbar() {
                     req().permission,
                     req().mediaTypes,
                   );
-                  setPermissionReq(null);
+                  dismissPermissionPrompt();
                 }
               }}
             >
@@ -1027,7 +1043,7 @@ export function Toolbar() {
                       req().permission,
                       req().mediaTypes,
                     );
-                    setPermissionReq(null);
+                    dismissPermissionPrompt();
                   }}
                 >
                   Deny
@@ -1042,7 +1058,7 @@ export function Toolbar() {
                       req().permission,
                       req().mediaTypes,
                     );
-                    setPermissionReq(null);
+                    dismissPermissionPrompt();
                   }}
                 >
                   Allow

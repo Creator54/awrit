@@ -22,10 +22,11 @@ function createView(omniboxVisible: boolean) {
     omniboxVisible,
     keyHelpVisible: !omniboxVisible,
     findVisible: false,
+    permissionPending: false,
     content: { webContents: { invalidate: () => {}, stopFindInPage }, focusOnWebView: () => {}, focus: () => { focused = 'page'; } },
     toolbar: {
       webContents: { isLoading: () => false, send: (...args: unknown[]) => sent.push(args) },
-      focusOnWebView: () => {}, focus: () => { focused = 'toolbar'; }, setIgnoreMouseEvents: () => {},
+      focusOnWebView: mock(() => {}), focus: () => { focused = 'toolbar'; }, setIgnoreMouseEvents: mock((_ignore: boolean) => {}),
     },
   };
   return { view, sent, stopFindInPage, focused: () => focused };
@@ -54,6 +55,17 @@ test('opening the address bar closes shortcut help before showing the address ba
   view.toggleOmnibox();
   expect(view.keyHelpVisible).toBe(false);
   expect(focused()).toBe('page');
+});
+
+test('closing the address bar leaves input with a pending permission prompt', () => {
+  const { view, sent, focused } = createView(true);
+  view.permissionPending = true;
+  view.toggleOmnibox();
+  expect(view.omniboxVisible).toBe(false);
+  expect(sent).toEqual([['omnibox:set-visible', false]]);
+  expect(view.toolbar.setIgnoreMouseEvents).toHaveBeenLastCalledWith(false);
+  expect(view.toolbar.focusOnWebView).toHaveBeenCalledTimes(1);
+  expect(focused()).toBe('toolbar');
 });
 
 test.each(['toggleFind', 'toggleOmnibox', 'toggleKeyHelp'] as const)('%s clears page highlights when closing Find', (action) => {

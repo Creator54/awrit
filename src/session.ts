@@ -133,32 +133,30 @@ ipcMain.on(
 
 ipcMain.on('toolbar:permission-response', (event, { id, allowed, url, permission, mediaTypes }) => {
   const pending = pendingPermissions.get(id);
-  if (pending && pending.sender === event.sender.id) {
-    const session = pending.session;
-    const sitePermissions = permissions(session);
-    pending.callback(allowed);
+  if (!pending || pending.sender !== event.sender.id) return;
+  const session = pending.session;
+  const sitePermissions = permissions(session);
+  pending.callback(allowed);
 
-    // Save to persistent map
-    try {
-      const origin = new URL(url).origin;
-      if (!sitePermissions.has(origin)) sitePermissions.set(origin, {});
-      if (allowed && permission === 'media' && mediaTypes) {
-        // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
-        sitePermissions.get(origin)![permission] = mediaTypes.join(',');
-      } else {
-        // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
-        sitePermissions.get(origin)![permission] = allowed;
-      }
-      notifyPermissionsChanged(origin, session);
-    } catch {}
-  }
+  // Save to persistent map
+  try {
+    const origin = new URL(url).origin;
+    if (!sitePermissions.has(origin)) sitePermissions.set(origin, {});
+    if (allowed && permission === 'media' && mediaTypes) {
+      // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
+      sitePermissions.get(origin)![permission] = mediaTypes.join(',');
+    } else {
+      // biome-ignore lint/style/noNonNullAssertion: origin is guaranteed present by the `has` check above
+      sitePermissions.get(origin)![permission] = allowed;
+    }
+    notifyPermissionsChanged(origin, session);
+  } catch {}
   const { managedViews } = require('./windows');
   const view = managedViews.find((v: any) => v.toolbar.webContents === event.sender);
   if (view) {
-    view.toolbar.setIgnoreMouseEvents(
-      !view.omniboxVisible && !view.keyHelpVisible && !view.findVisible,
-    );
-    if (view.omniboxVisible || view.findVisible || view.keyHelpVisible) {
+    const toolbarOwnsInput = view.omniboxVisible || view.keyHelpVisible || view.findVisible || view.designMode || view.permissionPending;
+    view.toolbar.setIgnoreMouseEvents(!toolbarOwnsInput);
+    if (toolbarOwnsInput) {
       view.toolbar.focusOnWebView();
     } else {
       view.content.focusOnWebView();

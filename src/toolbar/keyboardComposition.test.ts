@@ -37,6 +37,71 @@ test('IME candidate keys do not navigate Find or dismiss toolbar popups', () => 
 });
 
 
+test('Escape in the permission prompt does not reach the underlying toolbar', () => {
+  const start = source.indexOf('onKeyDown={(e) => {', source.indexOf('class="permission-palette"'));
+  const end = source.indexOf('\n              }}', start);
+  const calls: string[] = [];
+  const expression = source.slice(start, end + '\n              }'.length).replace('onKeyDown={', '');
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(`const onKeyDown = ${expression};`);
+  const onKeyDown = new Function('window', 'req', 'dismissPermissionPrompt', `${code}; return onKeyDown;`)(
+    { ipc: { resolvePermission: () => calls.push('deny') } },
+    () => ({ id: 1, url: 'https://example.test', permission: 'geolocation' }),
+    () => calls.push('dismiss'),
+  );
+  onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation: () => calls.push('stop') });
+  expect(calls).toEqual(['stop', 'deny', 'dismiss']);
+});
+
+test('a queued shortcut help update cannot move focus behind a permission prompt', () => {
+  const start = source.indexOf('  window.ipc.onSetKeyHelpVisible(');
+  const end = source.indexOf('\n  const [loadingUrl', start);
+  const callbacks: Array<() => void> = [];
+  let showHelp = (_data: { visible: boolean }) => { throw new Error('Missing shortcut help listener'); };
+  let pending = false;
+  let focused = 0;
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  new Function('window', 'document', 'HTMLElement', 'setShortcutQuery', 'setKeyHelp', 'queueMicrotask',
+    'shortcutSearch', 'permissionReq', `let helpReturnFocus; ${code}`)(
+    { ipc: { onSetKeyHelpVisible: (callback: typeof showHelp) => { showHelp = callback; } } },
+    { activeElement: null }, class {}, () => {}, () => {}, (fn: () => void) => callbacks.push(fn),
+    { focus: () => { focused++; } }, () => pending,
+  );
+  showHelp({ visible: true });
+  pending = true;
+  callbacks.shift()?.();
+  expect(focused).toBe(0);
+  pending = false;
+  showHelp({ visible: true });
+  callbacks.shift()?.();
+  expect(focused).toBe(1);
+});
+
+test('permission prompt replacement preserves the original return focus', () => {
+  const start = source.indexOf('  let permissionReturnFocus:');
+  const end = source.indexOf('\n\n  window.ipc.onSitePermissionsChanged', start);
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  class Control {
+    isConnected = true;
+    focus() { document.activeElement = this; }
+  }
+  const original = new Control();
+  const document = { activeElement: original };
+  let pending: number | null = null;
+  let request = (_id: number) => { throw new Error('Missing permission listener'); };
+  const dismiss = new Function('window', 'document', 'HTMLElement', 'permissionReq', 'setPermissionReq',
+    `${code}; return dismissPermissionPrompt;`)(
+    { ipc: { onPermissionRequest: (callback: typeof request) => { request = callback; } } },
+    document, Control, () => pending, (id: number | null) => { pending = id; },
+  );
+  request(1);
+  const promptButton = new Control();
+  promptButton.focus();
+  request(2);
+  dismiss();
+  expect(pending).toBeNull();
+  expect(document.activeElement).toBe(original);
+});
+
 test('hiding Find cancels a queued search and hidden callbacks cannot search', () => {
   let visible = true;
   let callback!: (text: string) => void;
