@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.2.2](https://github.com/Creator54/awrit/compare/v2.2.1...v2.2.2) (2026-11-19)
+
+
+### Fixes
+
+* coordinate address, Find, and shortcut overlays ([9e672c4](https://github.com/Creator54/awrit/commit/9e672c44d948e3c007b31522ff89e8ac2e34e444))
+* fit Android controls in narrow panes ([63aaed1](https://github.com/Creator54/awrit/commit/63aaed1c78dccf4c20009d7acf9dba15593cdbbc))
+* fit toolbar controls in small panes ([0964fae](https://github.com/Creator54/awrit/commit/0964fae99f5ab11d1dc1333d1cf8bb8bac2fae4b))
+* give the omnibox more room in wide panes ([0c46025](https://github.com/Creator54/awrit/commit/0c46025223427801b3756166b941ea72df349975))
+* keep macOS owner socket paths within limit ([7badc14](https://github.com/Creator54/awrit/commit/7badc1428417627fe13ab84c94712b3046af5990))
+* keep permission prompts in control ([2ec8591](https://github.com/Creator54/awrit/commit/2ec85914059cab481cadf88e19aafd7ed18fca07))
+* keep review editors usable in small panes ([fe5b9bb](https://github.com/Creator54/awrit/commit/fe5b9bbf90452a601acf746bd246c3b24b6e4eac))
+* open Find after the toolbar finishes loading ([1fd6288](https://github.com/Creator54/awrit/commit/1fd6288b589450e1cebc599b97c26863d1626c2e))
+* preserve toolbar input when exiting Design Mode ([662595a](https://github.com/Creator54/awrit/commit/662595ab4763bbcc1b7f64879c9e3b51c79c4913))
+* preserve WebGL in standalone snapshots ([7aa58ee](https://github.com/Creator54/awrit/commit/7aa58ee04a9304da41b86a789e0a8b9e6106e853))
+* refresh Nix dependency hashes ([176e5bb](https://github.com/Creator54/awrit/commit/176e5bb1156305fc2163f49c0e9a0d06d71765e7))
+* route remote paste to active toolbar overlays ([49b338e](https://github.com/Creator54/awrit/commit/49b338e1765f66da7e939e0533a81e1f37693cf7))
+* use Nix for installs on NixOS ([d3a9b78](https://github.com/Creator54/awrit/commit/d3a9b78b8767f527ea433e1f1ca91c43e28af253))
+
 ## [2.2.1](https://github.com/Creator54/awrit/compare/v2.2.0...v2.2.1) (2026-11-16)
 
 
