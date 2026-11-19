@@ -171,7 +171,6 @@ export function createInputHandler(
             }
             if (view.findVisible) {
               view.toggleFind();
-              view.content.webContents.stopFindInPage('clearSelection');
               return true;
             }
             if (view.keyHelpVisible) {

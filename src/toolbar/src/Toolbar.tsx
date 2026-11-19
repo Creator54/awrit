@@ -235,7 +235,6 @@ export function Toolbar() {
       e.stopPropagation();
     } else if (e.key === 'Escape') {
       window.ipc.toggleFind();
-      window.ipc.stopFindInPage();
       e.stopPropagation();
     }
   };
@@ -456,7 +455,6 @@ export function Toolbar() {
         window.ipc.toggleKeyHelp();
       } else if (findVisible() && e.key === 'Escape') {
         window.ipc.toggleFind();
-        window.ipc.stopFindInPage();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -550,7 +548,6 @@ export function Toolbar() {
                 type="button"
                 onClick={() => {
                   window.ipc.toggleFind();
-                  window.ipc.stopFindInPage();
                 }}
                 class="p-1 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                 title="Close (Escape)"

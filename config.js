@@ -187,7 +187,6 @@ function blurInput({ view }) {
   }
   if (view.findVisible) {
     view.toggleFind();
-    view.content.webContents.stopFindInPage('clearSelection');
     closedOverlay = true;
   }
   if (view.keyHelpVisible) {
