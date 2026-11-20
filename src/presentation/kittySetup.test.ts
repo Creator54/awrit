@@ -43,7 +43,10 @@ describe('setupKitty', () => {
     expect(r.suggestedMapping).toContain('map alt+d kitten');
     const snippetText = readFileSync(path.join(dir, 'awrit.conf'), 'utf8');
     expect(snippetText).toContain('\nmap alt+d kitten');
-    expect(snippetText).toContain('map --when-focus-on cmdline:/terminal/main\\.(js|ts) ctrl+shift+c send_key ctrl+shift+c');
+    // Other windows keep Kitty's own copy, so plain shells never get the key.
+    expect(snippetText).toContain(
+      '\nmap --when-focus-on "cmdline:/terminal/main\\.[jt]s or cmdline:tuios or cmdline:tmux" ctrl+shift+c copy_or_noop\n',
+    );
     expect(readFileSync(path.join(dir, 'awrit-kitten.py'), 'utf8')).toContain(
       readFileSync(realKitten, 'utf8'),
     );

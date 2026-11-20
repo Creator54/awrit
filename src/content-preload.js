@@ -6,6 +6,17 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
     webFrame.executeJavaScriptInIsolatedWorld(0, [{
       code: `
         (function() {
+          // Offscreen pages cannot reach the system clipboard. Report button
+          // copies; the isolated world only accepts them during a real gesture.
+          const clip = navigator.clipboard;
+          if (clip && clip.writeText) {
+            const writeText = clip.writeText.bind(clip);
+            clip.writeText = (text) => {
+              window.postMessage({ type: 'awrit:write-text', text: String(text) }, '*');
+              return writeText(text);
+            };
+          }
+
           // Polyfill visual drag image for OSR
           let dragClone = null;
           let dragOffsetX = 0;
@@ -85,6 +96,14 @@ document.addEventListener('copy', (event) => {
   const text = window.getSelection()?.toString();
   if (text) ipcRenderer.send('awrit:copy-to-clipboard', text);
 }, true);
+
+// The page can post this message itself, so it is honored only while the user's
+// own click or key is active: the same rule browsers apply to writeText.
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.data?.type !== 'awrit:write-text') return;
+  if (typeof event.data.text !== 'string' || !event.data.text || !navigator.userActivation?.isActive) return;
+  ipcRenderer.send('awrit:copy-to-clipboard', event.data.text);
+});
 
 /**
  * awrit Secure Auth Bridge (Generic Solution)

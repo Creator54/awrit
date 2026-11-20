@@ -54,3 +54,32 @@ test('the bridge retries through the main process without a page-supplied URL', 
   bridge?.retry();
   expect(sent).toEqual([['awrit:retry']]);
 });
+
+test('page writeText reaches the terminal only during a real user gesture', () => {
+  const listeners = new Map<string, (event: unknown) => void>();
+  const sent: unknown[][] = [];
+  const navigator = { userActivation: { isActive: false } };
+  const window: Record<string, unknown> = {
+    addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener),
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(import.meta.dir, 'content-preload.js'), 'utf8'), {
+    require: () => ({
+      contextBridge: { exposeInMainWorld: () => {} },
+      ipcRenderer: { send: (...args: unknown[]) => sent.push(args), on: () => {} },
+      webFrame: { executeJavaScriptInIsolatedWorld: () => Promise.resolve() },
+    }),
+    window, navigator, document: { addEventListener: () => {}, documentElement: null },
+    process: { isMainFrame: true }, setInterval: () => {}, console,
+  });
+  const message = listeners.get('message');
+  if (!message) throw new Error('writeText listener is missing');
+  const data = { type: 'awrit:write-text', text: 'copied' };
+  message({ source: window, data });
+  expect(sent).toEqual([]);
+  navigator.userActivation.isActive = true;
+  message({ source: {}, data });
+  message({ source: window, data: { ...data, text: 42 } });
+  expect(sent).toEqual([]);
+  message({ source: window, data });
+  expect(sent).toEqual([['awrit:copy-to-clipboard', 'copied']]);
+});

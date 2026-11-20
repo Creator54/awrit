@@ -66,8 +66,9 @@ function snippet(kitten: string, launcher: string, designKey: string): string {
 #
 env AWRIT_LAUNCHER=${launcher}
 map ${designKey} kitten ${kitten} design --key ${designKey}
-# Kitty's own copy shortcut otherwise swallows Ctrl+Shift+C before the page sees it.
-map --when-focus-on cmdline:/terminal/main\\.(js|ts) ctrl+shift+c send_key ctrl+shift+c
+# Kitty's own copy shortcut otherwise swallows Ctrl+Shift+C before Awrit sees it,
+# also inside tmux or TUIOS. Kitty still copies its own selection when there is one.
+map --when-focus-on "cmdline:/terminal/main\\.[jt]s or cmdline:tuios or cmdline:tmux" ctrl+shift+c copy_or_noop
 # map ctrl+shift+f9 kitten ${kitten} split https://example.com
 # map ctrl+shift+f10 kitten ${kitten} tab https://example.com
 `;
