@@ -20,13 +20,37 @@ test('successful colour query leaves no delayed stdin cleanup', async () => {
   try {
     const result = queryColors();
     process.stdin.emit('data', '\x1b]21;background=rgb:1d/20/21\x1b\\');
-    expect(await result).toEqual([['kitty-bg', '#1d2021']]);
+    process.stdin.emit('data', '\x1b]10;rgb:eb/db/b2\x1b\\\x1b]11;rgb:1d/20/21\x1b\\');
+    expect(await result).toEqual([['kitty-bg', '#1d2021'], ['kitty-fg', '#ebdbb2']]);
     expect(pause).toHaveBeenCalledTimes(1);
     await Bun.sleep(130);
     expect(pause).toHaveBeenCalledTimes(1);
     expect(raw).toHaveBeenCalledTimes(2);
   } finally {
     for (const mock of [raw, resume, pause, encoding, output]) mock.mockRestore();
+    if (rawDescriptor) Object.defineProperty(process.stdin, 'setRawMode', rawDescriptor);
+    else Reflect.deleteProperty(process.stdin, 'setRawMode');
+  }
+});
+
+test('a terminal without OSC 21, such as TUIOS, still gives its colours through OSC 10/11', async () => {
+  const rawDescriptor = Object.getOwnPropertyDescriptor(process.stdin, 'setRawMode');
+  Object.defineProperty(process.stdin, 'setRawMode', { configurable: true, writable: true, value: () => process.stdin });
+  const mocks = [
+    spyOn(process.stdin, 'setRawMode').mockImplementation(() => process.stdin),
+    spyOn(process.stdin, 'resume').mockImplementation(() => process.stdin),
+    spyOn(process.stdin, 'pause').mockImplementation(() => process.stdin),
+    spyOn(process.stdin, 'setEncoding').mockImplementation(() => process.stdin),
+    spyOn(process.stdout, 'write').mockImplementation(() => true),
+  ];
+  try {
+    const result = queryColors();
+    process.stdin.emit('data', '\x1b]10;rgb:ebeb/dbdb/b2b2\x07\x1b]11;rgb:1d1d/2020/2121\x07');
+    const colors = await result;
+    expect(colors).toEqual([['kitty-fg', '#ebdbb2'], ['kitty-bg', '#1d2021']]);
+    expect(terminalBackground(colors ?? [])).toBe('#1d2021');
+  } finally {
+    for (const mock of mocks) mock.mockRestore();
     if (rawDescriptor) Object.defineProperty(process.stdin, 'setRawMode', rawDescriptor);
     else Reflect.deleteProperty(process.stdin, 'setRawMode');
   }
