@@ -10,6 +10,38 @@
 export AWRIT_CALLER_CWD="${AWRIT_CALLER_CWD:-$PWD}"
 cd "$(dirname "$0")"
 
+# Evaluating shell.nix takes seconds, so reuse a saved copy of its environment, keyed by the
+# files and nixpkgs it is built from. Any failure here falls through to nix-shell below.
+if command -v nix >/dev/null 2>&1 && [ -z "$IN_NIX_SHELL" ] && [ -f "shell.nix" ] && [ -e .git ]; then
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/awrit/dev-env"
+  if nixpkgs=$(nix-instantiate --find-file nixpkgs 2>/dev/null) &&
+    files=$(git ls-files -co --exclude-standard -z -- shell.nix package.json awrit-native-rs | xargs -0r sha256sum) &&
+    [ -n "$files" ]; then
+    key=$(printf '%s\n' "$nixpkgs" "$(uname -m)" "$files" | sha256sum | cut -c1-16)
+  else
+    key=
+  fi
+  if [ -n "$key" ] && [ ! -s "$cache/$key.sh" ] && mkdir -p "$cache" && tmp=$(mktemp "$cache/.env.XXXXXX"); then
+    # The profile keeps the environment's store paths from garbage collection.
+    if nix --extra-experimental-features nix-command print-dev-env --profile "$cache/profile" -f shell.nix > "$tmp"; then
+      mv -f "$tmp" "$cache/$key.sh"
+      for old in "$cache"/*.sh; do [ "$old" = "$cache/$key.sh" ] || rm -f "$old"; done
+      for link in "$cache"/profile-*-link; do [ "$link" -ef "$cache/profile" ] || rm -f "$link"; done
+    else
+      rm -f "$tmp"
+    fi
+  fi
+  if [ -n "$key" ] && [ -s "$cache/$key.sh" ]; then
+    saved_tmp=$(export -p | grep -E '^declare -x (TMP|TMPDIR|TEMP|TEMPDIR)=')
+    # shellcheck disable=SC1090
+    source "$cache/$key.sh"
+    # The saved env makes a build directory that nix-shell would have removed on exit.
+    rm -rf "$NIX_BUILD_TOP"
+    unset NIX_BUILD_TOP TMP TMPDIR TEMP TEMPDIR
+    eval "$saved_tmp"
+  fi
+fi
+
 # Auto-enter nix-shell if available and not already inside one
 if command -v nix-shell >/dev/null 2>&1 && [ -z "$IN_NIX_SHELL" ] && [ -f "shell.nix" ]; then
   ARGS=()

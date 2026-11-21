@@ -656,7 +656,7 @@ test('source presentation resolves local targets in the caller directory', async
 });
 
 test('source shell preserves caller cwd through Nix re-execution', async () => {
-  const { mkdtempSync, realpathSync, writeFileSync, chmodSync, rmSync } = await import('node:fs');
+  const { mkdtempSync, realpathSync, writeFileSync, chmodSync, rmSync, readFileSync, readdirSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'awrit-reexec-')));
   try {
@@ -666,18 +666,37 @@ test('source shell preserves caller cwd through Nix re-execution', async () => {
     const fakeBun = path.join(dir, 'bun');
     writeFileSync(fakeBun, '#!/bin/bash\nprintf "%s\\n" "$AWRIT_CALLER_CWD"\n');
     chmodSync(fakeBun, 0o755);
-    const env = { ...process.env, PATH: dir + path.delimiter + process.env.PATH };
+    // No usable `nix`: the launcher falls back to entering nix-shell.
+    const fakeNixCli = path.join(dir, 'nix');
+    writeFileSync(fakeNixCli, '#!/bin/bash\nexit 1\n');
+    chmodSync(fakeNixCli, 0o755);
+    const env = { ...process.env, PATH: dir + path.delimiter + process.env.PATH, XDG_CACHE_HOME: path.join(dir, 'cache') };
     delete env.IN_NIX_SHELL;
     delete env.AWRIT_CALLER_CWD;
-    const child = Bun.spawn(['bash', path.join(import.meta.dir, '../../awrit'), 'capabilities'], {
-      cwd: dir,
-      env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const [text, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    expect(code).toBe(0);
-    expect(text.trim()).toBe(dir);
+    const run = async () => {
+      const child = Bun.spawn(['bash', path.join(import.meta.dir, '../../awrit'), 'capabilities'], {
+        cwd: dir,
+        env,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const [text, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+      expect(code).toBe(0);
+      return text.trim();
+    };
+    expect(await run()).toBe(dir);
+
+    // A saved environment is reused, and its build directory is removed.
+    const calls = path.join(dir, 'calls');
+    writeFileSync(
+      fakeNixCli,
+      `#!/bin/bash\necho >> ${calls}\nprintf '%s\\n' 'IN_NIX_SHELL=impure; export IN_NIX_SHELL' 'export NIX_BUILD_TOP="$(mktemp -d ${dir}/build.XXXXXX)"'\n`,
+    );
+    writeFileSync(fakeBun, '#!/bin/bash\nprintf "%s %s\\n" "$AWRIT_CALLER_CWD" "$NIX_BUILD_TOP"\n');
+    expect(await run()).toBe(dir);
+    expect(await run()).toBe(dir);
+    expect(readFileSync(calls, 'utf8')).toBe('\n');
+    expect(readdirSync(dir).filter((name) => name.startsWith('build.'))).toEqual([]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
