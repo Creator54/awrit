@@ -80,6 +80,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
   };
   let viewportRef: HTMLDivElement | undefined;
   const [frameDataUrl, setFrameDataUrl] = createSignal<string | null>(null);
+  const [frameCanvas, setFrameCanvas] = createSignal<OffscreenCanvas | null>(null);
   const [frameDims, setFrameDims] = createSignal<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -213,6 +214,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
+      setFrameCanvas(null);
       setFrameSource(null);
       setRestoredReview(false);
       setAnnotations([]);
@@ -277,12 +279,15 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
     let pendingUrl: string | undefined;
     try {
       const png = new Blob([new Uint8Array(frame.png)], { type: 'image/png' });
-      const blob = frame.source?.kind === 'terminal' ? await clearTerminalBackground(png, document.documentElement.dataset.terminalBackground ?? null) : png;
-      const url = URL.createObjectURL(blob);
-      pendingUrl = url;
-      const image = new Image();
-      image.src = url;
-      await image.decode();
+      const cleared = frame.source?.kind === 'terminal' ? await clearTerminalBackground(png, document.documentElement.dataset.terminalBackground ?? null) : undefined;
+      let url: string | null = null;
+      if (!cleared) {
+        url = URL.createObjectURL(png);
+        pendingUrl = url;
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+      }
       if (request !== frameRequest || !props.active) return;
       const previousUrl = frameDataUrl();
       // Keep the old image and its geometry until the replacement is decoded.
@@ -290,6 +295,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
       setSaveStatus(null);
       setSaveOutcome('normal');
       setFrameDataUrl(url);
+      setFrameCanvas(cleared ?? null);
       if (frame.restored) {
         if (frameMeta() && frameMeta()?.captureId !== frame.captureId && annotations().length > 0) {
           setSaveStatus('Previous notes saved with the original capture in Reviews.');
@@ -335,6 +341,10 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
       });
       pendingUrl = undefined;
       if (previousUrl) URL.revokeObjectURL(previousUrl);
+      // The review side panel shows the capture as an image; encode it after first paint.
+      if (cleared) void cleared.convertToBlob({ type: 'image/png' }).then(blob => {
+        if (request === frameRequest && props.active && frameCanvas() === cleared) setFrameDataUrl(URL.createObjectURL(blob));
+      }, error => console.error('Could not encode review capture', error));
     } catch (err) {
       console.error('Failed to process frozen frame', err);
       if (request === frameRequest && props.active) {
@@ -829,7 +839,7 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
         aria-modal="true"
         aria-label="Visual review"
         class="design-review fixed inset-0 z-50 select-none text-[var(--ui-text)] focus:outline-none overflow-hidden"
-        classList={{ "design-review-terminal": frameSource()?.kind === "terminal" || !frameDataUrl() }}
+        classList={{ "design-review-terminal": frameSource()?.kind === "terminal" || !(frameCanvas() || frameDataUrl()) }}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onWheel={(e) => e.stopPropagation()}
@@ -849,21 +859,31 @@ export function DesignModeOverlay(props: DesignModeOverlayProps) {
           onPointerLeave={handleMouseLeave}
         >
           {/* Frozen frame */}
-          <Show when={frameDataUrl() ? frameMeta()?.captureId : undefined} keyed>
-            {(captureId) => (
-              <img
-                src={frameDataUrl() ?? undefined}
-                alt="Frozen frame"
-                onLoad={() => {
-                  // Image load precedes layout/paint; reveal only after the
-                  // complete review has had a rendering opportunity.
-                  requestAnimationFrame(() => requestAnimationFrame(() => {
-                    if (props.active && frameMeta()?.captureId === captureId) window.ipc.designFrameReady(captureId);
-                  }));
-                }}
-                class="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
-              />
-            )}
+          <Show when={frameCanvas() || frameDataUrl() ? frameMeta()?.captureId : undefined} keyed>
+            {(captureId) => {
+              // Load precedes layout/paint; reveal only after the complete
+              // review has had a rendering opportunity.
+              const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (props.active && frameMeta()?.captureId === captureId) window.ipc.designFrameReady(captureId);
+              }));
+              const frameClass = "absolute inset-0 w-full h-full object-contain pointer-events-none select-none";
+              const source = frameCanvas();
+              return source ? (
+                <canvas
+                  role="img"
+                  aria-label="Frozen frame"
+                  ref={(canvas) => {
+                    canvas.width = source.width;
+                    canvas.height = source.height;
+                    canvas.getContext('2d')?.drawImage(source, 0, 0);
+                    reveal();
+                  }}
+                  class={frameClass}
+                />
+              ) : (
+                <img src={frameDataUrl() ?? undefined} alt="Frozen frame" onLoad={reveal} class={frameClass} />
+              );
+            }}
           </Show>
 
           {/* Persistent Annotated Highlights */}

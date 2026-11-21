@@ -101,8 +101,8 @@ describe('DesignModeOverlay regressions', () => {
   });
 
   test('frame readiness waits for rendering and rejects a replaced capture', () => {
-    const start = overlaySource.indexOf('                  requestAnimationFrame(() => requestAnimationFrame');
-    const end = overlaySource.indexOf('\n                }}', start);
+    const start = overlaySource.indexOf('requestAnimationFrame(() => requestAnimationFrame', overlaySource.indexOf('const reveal = '));
+    const end = overlaySource.indexOf('}));', start) + '}));'.length;
     const callbacks: Array<() => void> = [];
     const ready: string[] = [];
     let current = 'capture-1';
@@ -142,7 +142,7 @@ describe('DesignModeOverlay regressions', () => {
       URL: { createObjectURL: () => `frame-${++next}`, revokeObjectURL: (url: string) => revoked.push(url) },
       Image: class { src = ''; decode() { return new Promise<void>((resolve, reject) => { decodes.push(resolve); failures.push(reject); }); } },
       window: { ipc: { onDesignFrozenFrame: (fn: typeof receive) => { receive = fn; } } },
-      frameDataUrl: () => shown, setFrameDataUrl: (url: string) => { shown = url; },
+      frameDataUrl: () => shown, setFrameDataUrl: (url: string) => { shown = url; }, setFrameCanvas() {},
       batch: (fn: () => void) => fn(),
       setSaveStatus: (value: string) => { status = value; }, setSaveOutcome() {}, setRestoredReview() {}, setAnnotations() {}, setSentNotes() {}, setDeletedNote() {},
       setSelectedAnnotationId: (id: string | null) => { selected = id; }, setActiveComment() {},
@@ -492,7 +492,7 @@ describe('DesignModeOverlay regressions', () => {
 
   test('frozen frame image markup uses object-contain matching coordinate math', () => {
     // Verifies the image rendering uses object-contain rather than object-fill
-    expect(overlaySource).toContain('class="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"');
+    expect(overlaySource).toContain('const frameClass = "absolute inset-0 w-full h-full object-contain pointer-events-none select-none";');
     expect(overlaySource).not.toContain('class="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"');
 
     // Selection math assumes CSS object-contain letterboxing/pillarboxing
