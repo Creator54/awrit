@@ -1,6 +1,6 @@
 {
   "name": "awrit",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "A full graphical web browser for Kitty terminal with mouse and keyboard support",
   "main": "index.js",
   "author": "Chase Colman",

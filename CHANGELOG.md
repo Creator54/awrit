@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.3.0](https://github.com/Creator54/awrit/compare/v2.2.2...v2.3.0) (2026-11-21)
+
+
+### Features
+
+* **kitty:** Alt+D reviews the focused TUIOS pane in a popup over it ([fc4c87d](https://github.com/Creator54/awrit/commit/fc4c87d716dcdbd4dc51a49b377c1e05a3d839d3))
+
+
+### Fixes
+
+* copy from pages inside tmux or TUIOS ([2544620](https://github.com/Creator54/awrit/commit/254462099c4d81fd751f2ff140056fe28914e7e3))
+* **design:** route TUIOS pane reviews to the agent in that pane ([bdf48b3](https://github.com/Creator54/awrit/commit/bdf48b3ba4ee8c2d731ec3dead59a2c2080c3163))
+* **design:** send to the only open agent; drop TUIOS pane ids from labels ([e6bd911](https://github.com/Creator54/awrit/commit/e6bd91116dcc44da0e4ce29ee37c8ab1826d6f3f))
+* open Design Mode after toolbar loads ([fed6162](https://github.com/Creator54/awrit/commit/fed61622a5fa023453cd4d753d3e2a868ac038e0))
+* **owner:** do not force Vulkan on Wayland ([7b53b26](https://github.com/Creator54/awrit/commit/7b53b26c84366d1c1e01b13a9083eb0222a9fcb3))
+* **runner:** read terminal colours through TUIOS ([7535e5a](https://github.com/Creator54/awrit/commit/7535e5a1e10200d30f20dfe5edfde810770966bc))
+
+
+### Performance
+
+* **android:** resident UI dumper, ~2 s to ~80 ms per snapshot ([0692f33](https://github.com/Creator54/awrit/commit/0692f33cdefc9ce417078d5358416c8f9167f3df))
+* **design:** draw the cleared terminal frame without a PNG round-trip ([b2f830d](https://github.com/Creator54/awrit/commit/b2f830db4737109a65b809754cc16531a7c35fa8))
+* **kitten:** encode the pane capture with fast zlib ([e20aa9d](https://github.com/Creator54/awrit/commit/e20aa9d00968411b083bb04751ca42a49ee6dd96))
+* **launcher:** pin shell.nix to flake.lock ([cf292d9](https://github.com/Creator54/awrit/commit/cf292d9c82d8e5bca37a31eac82e6aeb93d404d7))
+* **launcher:** reuse the evaluated nix shell environment ([175cb9a](https://github.com/Creator54/awrit/commit/175cb9ac5a6df6ef83bbf3aad19083f0df2d5e6d))
+* **owner:** keep the browser up 10 minutes after the last viewer closes ([84956df](https://github.com/Creator54/awrit/commit/84956dfe3f8c92d805fac9970c7994f168c712fc))
+* **runner:** create the Vite dev server only for --dev ([2e5a9dd](https://github.com/Creator54/awrit/commit/2e5a9ddceea6722ae3e82492713ff669b35fc101))
+
 ## [2.2.2](https://github.com/Creator54/awrit/compare/v2.2.1...v2.2.2) (2026-11-19)
 
 
