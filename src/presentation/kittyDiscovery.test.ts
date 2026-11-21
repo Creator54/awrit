@@ -5,6 +5,7 @@ import {
   getProcessAncestors,
   pickTabNeighbor,
   probeSocket,
+  resolveKittyContext,
 } from './kittyDiscovery';
 
 describe('kittyDiscovery', () => {
@@ -90,5 +91,23 @@ describe('kittyDiscovery', () => {
     const tab = [{ id: 1, neighbors: { top: [3] } }, { id: 2 }, { id: 3 }];
     expect(pickTabNeighbor(tab, 1)).toBe(3);
     expect(pickTabNeighbor([{ id: 1, neighbors: { left: [9] } }], 1)).toBeUndefined();
+  });
+
+  it('does not read a TUIOS pane id as a Kitty window id', async () => {
+    const net = await import('node:net');
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const dir = mkdtempSync('/tmp/awrit-kd-');
+    const sock = `${dir}/kitty.sock`;
+    const server = net.createServer((c) => c.end()).listen(sock);
+    await new Promise((r) => server.once('listening', r));
+    try {
+      const pane = await resolveKittyContext({ endpoint: `unix:${sock}`, sourceWindowId: '6e5790e5-e9c0-465c-b039-357f87fb1e79', env: {} });
+      expect(pane?.sourceWindowId).toBeUndefined();
+      const kitty = await resolveKittyContext({ endpoint: `unix:${sock}`, sourceWindowId: '42', env: {} });
+      expect(kitty?.sourceWindowId).toBe(42);
+    } finally {
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

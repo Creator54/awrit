@@ -1,5 +1,8 @@
 import type { Annotation, FrozenSource } from './types';
 
+/** Names a terminal source: a Kitty window id is numeric, a TUIOS pane id is a UUID. */
+export const terminalLabel = (id: string) => (id.includes('-') ? `TUIOS pane ${id}` : `Kitty window ${id}`);
+
 const oneLine = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 /**
@@ -46,6 +49,6 @@ export function formatNotes(
     .join('\n');
   if (source?.kind !== 'terminal') return body;
   const title = source.title ? ` (${oneLine(source.title)})` : '';
-  const header = `• Source: Kitty window ${source.windowId}${title}`;
+  const header = `• Source: ${terminalLabel(source.windowId)}${title}`;
   return body ? `${header}\n${body}` : header;
 }

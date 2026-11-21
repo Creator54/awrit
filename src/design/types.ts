@@ -81,7 +81,7 @@ export type FrozenSource =
     }
   | {
       kind: 'terminal';
-      /** Numeric Kitty window id as a decimal string; no URL describes this source. */
+      /** Kitty window id, or TUIOS pane id; no URL describes this source. */
       windowId: string;
       title?: string;
     };

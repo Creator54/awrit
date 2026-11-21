@@ -1,6 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
+/** A Kitty window id, or a TUIOS pane id when the review covers one pane inside TUIOS. */
+export const TERMINAL_ID = /^(?:[1-9][0-9]{0,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
 export function terminalReviewTarget(windowId: string, imagePath: string): string {
   const target = `awrit://terminal-review/${windowId}?image=${encodeURIComponent(imagePath)}`;
   parseTerminalReviewTarget(target);
@@ -28,7 +31,7 @@ export function parseTerminalReviewTarget(target: string): { windowId: string; i
   const windowId = url.pathname.slice(1);
   const imagePath = url.searchParams.get('image') ?? '';
   if (url.hostname !== 'terminal-review' || url.username || url.password || url.port || url.hash ||
-      !/^[1-9][0-9]{0,9}$/.test(windowId) || !path.isAbsolute(imagePath) || imagePath.includes('\0') ||
+      !TERMINAL_ID.test(windowId) || !path.isAbsolute(imagePath) || imagePath.includes('\0') ||
       [...url.searchParams.keys()].length !== 1 || url.searchParams.getAll('image').length !== 1) {
     throw new Error('Invalid terminal review target');
   }

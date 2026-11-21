@@ -29,10 +29,12 @@ export default function (pi: any) {
   const traceFile = process.env.AWRIT_TRACE_FEEDBACK;
   const tracedMessages = new Map<string, string>();
   let traceSessionId: string | undefined;
+  // Inside TUIOS every pane shares one Kitty window, and TUIOS hides KITTY_WINDOW_ID; its pane id tells panes apart.
+  const terminalId = process.env.TUIOS_PANE_ID || process.env.KITTY_WINDOW_ID || null;
   function traceFeedback(event: string, draftId: string, ok?: boolean) {
     if (!traceFile) return;
     try {
-      fs.appendFileSync(traceFile, JSON.stringify({ event, draftId, timestamp: new Date().toISOString(), pid: process.pid, windowId: process.env.KITTY_WINDOW_ID, sessionId: traceSessionId, ...(ok === undefined ? {} : { ok }) }) + '\\n', { mode: 0o600 });
+      fs.appendFileSync(traceFile, JSON.stringify({ event, draftId, timestamp: new Date().toISOString(), pid: process.pid, windowId: terminalId, sessionId: traceSessionId, ...(ok === undefined ? {} : { ok }) }) + '\\n', { mode: 0o600 });
     } catch { /* Diagnostic output must not affect feedback delivery. */ }
   }
   if (traceFile && typeof pi?.on === 'function') {
@@ -76,7 +78,7 @@ export default function (pi: any) {
         const handshake = JSON.stringify({
           type: 'handshake',
           harness: 'pi',
-          windowId: process.env.KITTY_WINDOW_ID || null,
+          windowId: terminalId,
           pid: process.pid,
           cwd: process.cwd(),
           feedbackAck: true,
@@ -131,7 +133,7 @@ export default function (pi: any) {
         return;
       }
 
-      const myWindowId = process.env.KITTY_WINDOW_ID ? String(process.env.KITTY_WINDOW_ID) : null;
+      const myWindowId = terminalId;
       const targetSourceId = msg.sourceWindowId ? String(msg.sourceWindowId) : null;
 
       // Require strict myWindowId and msg.sourceWindowId match (no viewerfallback/adopted exceptions)
@@ -235,7 +237,7 @@ export default function (pi: any) {
   const NO_VIEWER = 'Awrit status: no viewer is open in this terminal window.';
   const UNKNOWN = 'Awrit status: unknown, the viewer did not answer. Run awrit status before opening another viewer.';
   function viewerStatus(): Promise<string> {
-    const windowId = process.env.KITTY_WINDOW_ID;
+    const windowId = terminalId;
     if (!windowId || !fs.existsSync(getSocketPath())) return Promise.resolve(NO_VIEWER);
     if (statusUnsupported) return Promise.resolve(UNKNOWN);
     return new Promise((resolve) => {

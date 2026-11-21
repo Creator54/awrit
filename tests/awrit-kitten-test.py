@@ -228,8 +228,9 @@ class T(unittest.TestCase):
         self.assertEqual(boss.errors, [])
         popup = calls[-1]
         self.assertEqual(popup[:8], [tuios, 'popup', '-s', 'moved', '--over', 'b', '--dim', '0'])
-        self.assertIn('AWRIT_SOURCE_WINDOW_ID=7', popup); self.assertIn('AWRIT_TERMINAL_SCHEME=dark', popup)
-        self.assertEqual(popup[-2:], ['--source-window-id', '7'])
+        self.assertIn('AWRIT_SOURCE_WINDOW_ID=b', popup); self.assertIn('AWRIT_TERMINAL_SCHEME=dark', popup)
+        self.assertEqual(popup[-2:], ['--source-window-id', 'b'])
+        self.assertIn('awrit://terminal-review/b?image=', popup[-4])
 
         def refuse(cmd, **kw):
             raise mod.subprocess.CalledProcessError(1, cmd, stderr='no window')

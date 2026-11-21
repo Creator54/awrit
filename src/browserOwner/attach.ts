@@ -8,6 +8,7 @@ import {
 } from './options';
 import type { CompanionConfig } from '../presentation/companion';
 import { parseCompanionConfig } from '../presentation/companion';
+import { TERMINAL_ID } from '../design/terminalReview';
 
 export interface AttachRequest {
   type: 'attach';
@@ -76,7 +77,7 @@ export function decodeAttach(value: unknown, build: string, debugPort = 'disable
   for (const key of optional.filter(
     (key) => key !== 'profile' && key !== 'android' && key !== 'companion' && key !== 'terminalScheme' && key !== 'terminalBackground',
   )) {
-    if (typeof request[key] !== 'string' || !/^[0-9]{1,20}$/.test(request[key]))
+    if (typeof request[key] !== 'string' || !(/^[0-9]{1,20}$/.test(request[key]) || (key === 'sourceWindowId' && TERMINAL_ID.test(request[key]))))
       throw new Error('Invalid terminal window identity');
   }
   if (request.type !== 'attach' || request.version !== 1 || request.build !== build)

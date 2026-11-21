@@ -16,10 +16,10 @@ import { updateCaptureSentRevisions } from '../presentation/collaborativeCapture
 import { acceptedRevisions } from './sentRevisions';
 import { loadDraft, saveDraft } from './draftStore';
 import { loadReviewSession, saveReviewCapture } from './reviewSession';
-import { readTerminalCapture } from './terminalReview';
+import { readTerminalCapture, TERMINAL_ID } from './terminalReview';
 import { persistFeedbackArtifacts } from './feedbackArtifacts';
 import { verifySourceFeedback } from './sourceFeedback';
-import { formatNotes } from './notes';
+import { formatNotes, terminalLabel } from './notes';
 import { initSessionWorkspace } from '../session/workspace';
 import type { CaptureProvenance } from '../remote/captureProvenance';
 import type { Dimensions, FrozenSource } from './types';
@@ -223,7 +223,7 @@ export function registerDesignIpc(deps: WindowDesignIpcDeps): WindowDesignIpc {
 
       // Hard invariant: never mislead the agent into searching for non-existent files.
       // Omit internal JSON path from summary; supply exact screenshot path and instructions.
-      const srcUrl = d.source.kind === 'web' ? d.source.url : d.source.kind === 'adb' ? d.source.serial : d.source.kind === 'terminal' ? `Kitty window ${d.source.windowId}` : d.source.path;
+      const srcUrl = d.source.kind === 'web' ? d.source.url : d.source.kind === 'adb' ? d.source.serial : d.source.kind === 'terminal' ? terminalLabel(d.source.windowId) : d.source.path;
       const sourceHash = d.source?.kind === 'document' && d.source.sha256 ? `Source SHA-256: ${d.source.sha256}` : '';
       const summaryText = [
         srcUrl ? `[Design Feedback] ${srcUrl}` : `[Design Feedback]`,
@@ -377,7 +377,7 @@ export function registerDesignIpc(deps: WindowDesignIpcDeps): WindowDesignIpc {
     return clients.map(client => {
       const id = [...reviewRecipients].find(([, existing]) => existing === client)?.[0] ?? crypto.randomBytes(12).toString('hex');
       reviewRecipients.set(id, client);
-      return { id, label: `${client.harness || 'Agent'}${client.windowId ? ` — split ${client.windowId}` : ''}${client.cwd ? ` — ${client.cwd}` : ''}`, preferred: client === preferred };
+      return { id, label: `${client.harness || 'Agent'}${client.windowId ? ` — ${client.windowId.includes('-') && TERMINAL_ID.test(client.windowId) ? 'TUIOS pane' : `split ${client.windowId}`}` : ''}${client.cwd ? ` — ${client.cwd}` : ''}`, preferred: client === preferred };
     });
   });
   registerToolbarHandler('awrit:select-review-recipient', toolbarContentsId, (event: Electron.IpcMainInvokeEvent, id: unknown) => {

@@ -1,5 +1,6 @@
 import { parseCaptureProvenance } from '../remote/captureProvenance';
 import { normalizePixelRegion } from './coordinates';
+import { TERMINAL_ID } from './terminalReview';
 import type {
   Annotation,
   DesignDraft,
@@ -49,8 +50,6 @@ const MAX_ID_LENGTH = 128;
 const MAX_URL_OR_PATH_LENGTH = 8192;
 const MAX_METADATA_STRING_LENGTH = 2048;
 const MAX_SERIAL_LENGTH = 256;
-const MAX_KITTY_WINDOW_ID_LENGTH = 10;
-const KITTY_WINDOW_ID_REGEX = /^[1-9][0-9]{0,9}$/;
 
 function validatePngDims(pngDims: unknown): asserts pngDims is Dimensions {
   if (!isPlainObject(pngDims)) {
@@ -438,11 +437,9 @@ export function validateFrozenSource(raw: unknown): FrozenSource {
       assertNoUnknownFields(raw, ['kind', 'windowId', 'title'], 'FrozenSource(terminal)');
       if (
         typeof raw.windowId !== 'string' ||
-        !KITTY_WINDOW_ID_REGEX.test(raw.windowId) ||
-        raw.windowId.length > MAX_KITTY_WINDOW_ID_LENGTH ||
-        !Number.isSafeInteger(Number(raw.windowId))
+        !TERMINAL_ID.test(raw.windowId)
       ) {
-        throw new Error('Terminal source windowId must be a strict positive numeric Kitty window id');
+        throw new Error('Terminal source windowId must be a Kitty window id or a TUIOS pane id');
       }
       if (raw.title !== undefined) {
         if (typeof raw.title !== 'string') {

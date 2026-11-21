@@ -181,11 +181,13 @@ def review_pane(boss, source, pane, launcher, extra_env, run=subprocess.run):
             image = os.path.join(directory, 'capture.png')
             with open(image, 'xb') as f:
                 f.write(png)
-            target = f'awrit://terminal-review/{source.id}?image=' + quote(image, safe='')
-            env = ['AWRIT_SOURCE_WINDOW_ID=' + str(source.id), *(k + '=' + v for k, v in extra_env.items())]
+            # Every pane shares this Kitty window, so the pane id names the review's source agent.
+            pane_id = window['window_id']
+            target = f'awrit://terminal-review/{pane_id}?image=' + quote(image, safe='')
+            env = ['AWRIT_SOURCE_WINDOW_ID=' + pane_id, *(k + '=' + v for k, v in extra_env.items())]
             # The review exits on Escape or the design key; its capture goes with it.
             command = ['/bin/sh', '-c', 'trap \'rm -rf -- "$0"\' EXIT HUP INT TERM; env "$@"', directory, *env,
-                       launcher, target, '--overlay', '--source-window-id', str(source.id)]
+                       launcher, target, '--overlay', '--source-window-id', pane_id]
             run([pane['tuios'], 'popup', '-s', pane['session'], '--over', window['window_id'], '--dim', '0',
                  '--cwd', directory, '--', *command],
                 capture_output=True, text=True, timeout=3, check=True, env=pane['env'])

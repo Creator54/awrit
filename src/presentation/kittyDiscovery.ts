@@ -220,7 +220,8 @@ export async function resolveKittyContext(options: {
 } = {}): Promise<ResolvedKittyContext | null> {
   const env = options.env ?? process.env;
   const initialEndpoint = options.endpoint ?? env.KITTY_LISTEN_ON;
-  const initialWindowId = options.sourceWindowId
+  // A TUIOS pane id is not a Kitty window; parseInt would read its leading digits as one.
+  const initialWindowId = options.sourceWindowId && /^[0-9]+$/.test(String(options.sourceWindowId))
     ? parseInt(String(options.sourceWindowId), 10)
     : env.KITTY_WINDOW_ID
       ? parseInt(env.KITTY_WINDOW_ID, 10)

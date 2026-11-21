@@ -661,3 +661,20 @@ test('only the interactive or rpc session connects for feedback; subagents stay 
     else process.env.AWRIT_IPC_SOCKET = prev;
   }
 }, 10000);
+
+test('inside a TUIOS pane the agent names its pane, not the shared Kitty window', async () => {
+  const previous = process.env.TUIOS_PANE_ID;
+  process.env.TUIOS_PANE_ID = '6e5790e5-e9c0-465c-b039-357f87fb1e79';
+  try {
+    await withStatusServer(
+      (send) => send(statusReply([])),
+      async (beforeTurn, asked) => {
+        await beforeTurn();
+        expect(asked).toEqual(['6e5790e5-e9c0-465c-b039-357f87fb1e79']);
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env.TUIOS_PANE_ID;
+    else process.env.TUIOS_PANE_ID = previous;
+  }
+});
