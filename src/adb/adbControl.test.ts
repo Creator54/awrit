@@ -198,6 +198,7 @@ describe('ADB Control', () => {
       clearInterval: () => {},
       computeStreamDimensions,
       getAdbHtml: () => '',
+      createUiDumper: () => ({ dump: async () => '', close() {} }),
       readAndroidKeyConfig: () => ({ leader: '<Space>', keys: {} }),
       availableParallelism: () => 2,
       http: {
@@ -291,6 +292,7 @@ describe('ADB Control', () => {
       clearInterval: () => {},
       computeStreamDimensions,
       getAdbHtml: () => '',
+      createUiDumper: () => ({ dump: async () => '', close() {} }),
       readAndroidKeyConfig: () => ({ leader: '<Space>', keys: {} }),
       http: { createServer: () => server },
       spawn() {
@@ -1770,6 +1772,7 @@ describe('ADB Control', () => {
       computeStreamDimensions,
       textInputCommand,
       getAdbHtml: () => '',
+      createUiDumper: () => ({ dump: async () => '', close() {} }),
       readAndroidKeyConfig: () => ({ leader: '<Space>', keys: {} }),
       availableParallelism: () => 2,
       executeFile: async (_binary: string, args: string[]) => {

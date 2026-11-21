@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { readAndroidKeyConfig } from '../designKey';
 import type { CompanionConfig } from '../presentation/companion';
 import { getAdbHtml } from './template';
+import { createUiDumper } from './uiDump';
 
 const executeFile = promisify(execFile);
 /** A launchable `package/activity`; no shell metacharacters (`$` inner classes are excluded). */
@@ -498,6 +499,7 @@ export async function createAdbControl(
   );
 
   const controls = new AbortController();
+  const uiDumper = createUiDumper(adbBin, device, controls.signal);
   const shell = (args: string[]) =>
     executeFile(adbBin, ['-s', device, 'shell', ...args], {
       timeout: 3000,
@@ -791,33 +793,14 @@ export async function createAdbControl(
     }
 
     if (req.method === 'GET' && url.pathname === '/ui') {
-      // A uiautomator dump takes 1-3 s and needs its own adb call, not the input shell.
-      executeFile(
-        adbBin,
-        [
-          '-s',
-          device,
-          'shell',
-          // rm first so a failed dump cannot return the previous screen; uiautomator can exit 0
-          // without writing the file ("could not get idle state"), so report its output instead.
-          'f=/data/local/tmp/awrit-ui.xml; rm -f $f; out=$(uiautomator dump $f 2>&1); [ -s $f ] && cat $f || { echo "$out" >&2; exit 1; }',
-        ],
-        {
-          timeout: 12_000,
-          killSignal: 'SIGKILL',
-          maxBuffer: 8 * 1024 * 1024,
-          signal: controls.signal,
-        },
-      ).then(
-        ({ stdout }) => {
+      uiDumper.dump().then(
+        (xml) => {
           res.writeHead(200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store' });
-          res.end(stdout);
+          res.end(xml);
         },
         (error: unknown) => {
-          const stderr = Reflect.get(Object(error), 'stderr');
-          const detail = (typeof stderr === 'string' && stderr.trim()) || String(error);
           res.writeHead(502, { 'Content-Type': 'text/plain' });
-          res.end(`Cannot read the screen elements: ${detail.slice(0, 300)}`);
+          res.end(`Cannot read the screen elements: ${String(error).slice(0, 300)}`);
         },
       );
       return;
@@ -1147,6 +1130,7 @@ export async function createAdbControl(
         restartTimeout = null;
       }
       controls.abort();
+      uiDumper.close();
       try {
         controlShell?.kill('SIGKILL');
       } catch {}
