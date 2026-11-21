@@ -130,7 +130,6 @@ if (options.deviceCommand !== undefined) {
   // `view`: fall through and launch the shared browser owner.
 }
 
-const { server } = await import('./devServer');
 const root = resolve(__dirname, '../../');
 await $`mkdir -p ${root}/dist`.nothrow().quiet();
 
@@ -245,9 +244,9 @@ if (needsToolbarBuild) {
 const children: [string, Subprocess][] = [];
 const isDev = options.dev;
 
-if (isDev) {
-  await server.listen();
-}
+// Creating the Vite dev server costs about a second, so only --dev pays for it.
+const server = isDev ? (await import('./devServer')).server : undefined;
+await server?.listen();
 
 const electronPath = getElectronPath();
 process.env.AWRIT_ELECTRON = electronPath;
@@ -283,7 +282,7 @@ function destroyAllSubprocesses(code = 0) {
   for (const [name, child] of children) {
     destroySubprocess(name, child);
   }
-  if (isDev) {
+  if (server) {
     console.error('stopping dev server');
     server.close();
   }
