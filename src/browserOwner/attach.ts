@@ -39,8 +39,17 @@ function exact(value: Record<string, unknown>, keys: string[]): void {
     throw new Error('Unexpected attach fields');
 }
 
+// The client runs a newer build than this owner.
+export class StaleOwnerError extends Error {
+  constructor() {
+    super('Incompatible Awrit owner; close old viewers and retry');
+  }
+}
+
 export function decodeAttach(value: unknown, build: string, debugPort = 'disabled'): AttachRequest {
   const request = record(value);
+  // Checked first so a newer client with a changed request still reaches the retire path.
+  if (request.build !== build) throw new StaleOwnerError();
   const optional = ['sourceWindowId', 'kittyWindowId', 'profile', 'android', 'companion', 'terminalScheme', 'terminalBackground'].filter(
     (key) => Object.hasOwn(request, key),
   );
@@ -80,7 +89,7 @@ export function decodeAttach(value: unknown, build: string, debugPort = 'disable
     if (typeof request[key] !== 'string' || !(/^[0-9]{1,20}$/.test(request[key]) || (key === 'sourceWindowId' && TERMINAL_ID.test(request[key]))))
       throw new Error('Invalid terminal window identity');
   }
-  if (request.type !== 'attach' || request.version !== 1 || request.build !== build)
+  if (request.type !== 'attach' || request.version !== 1)
     throw new Error('Incompatible Awrit owner; close old viewers and retry');
   if (typeof request.url !== 'string' || request.url.length > 32768)
     throw new Error('Invalid attach URL');

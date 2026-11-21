@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { decodeAttach } from './attach';
+import { decodeAttach, StaleOwnerError } from './attach';
 
 const request = {
   type: 'attach',
@@ -61,4 +61,12 @@ test('attach validates build, fields, dimensions and capabilities before creatin
     decodeAttach({ ...request, features: { ...request.features, keyboard: 'true' } }, 'test-build'),
   ).toThrow();
   expect(() => decodeAttach({ ...request, url: 'x'.repeat(32769) }, 'test-build')).toThrow();
+});
+
+test('a build mismatch is reported as a stale owner', () => {
+  expect(() => decodeAttach(request, 'other-build')).toThrow(StaleOwnerError);
+});
+
+test('a stale build wins over a changed request shape', () => {
+  expect(() => decodeAttach({ ...request, futureField: 1 }, 'other-build')).toThrow(StaleOwnerError);
 });

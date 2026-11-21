@@ -27,3 +27,17 @@ test('shutdown rejects future attaches and runs once', () => {
   panes.detach('first');
   expect(shutdowns).toBe(1);
 });
+
+test('an idle delay keeps the owner up for a returning pane', async () => {
+  let shutdowns = 0;
+  const panes = new PaneRegistry(() => shutdowns++, 20);
+  panes.attach('first');
+  panes.detach('first');
+  expect(panes.attach('next')).toBe(true);
+  await Bun.sleep(40);
+  expect(shutdowns).toBe(0);
+  panes.detach('next');
+  await Bun.sleep(40);
+  expect(shutdowns).toBe(1);
+  expect(panes.attach('late')).toBe(false);
+});

@@ -29,7 +29,7 @@ function logTail(file: string, from: number): string {
   }
 }
 
-async function main() {
+async function main(retried = false) {
   const argumentError = launchArgumentError(process.argv.slice(2));
   if (argumentError) {
     console.error(argumentError);
@@ -96,40 +96,46 @@ async function main() {
     } catch {
       const electron = process.env.AWRIT_ELECTRON;
       if (!electron) throw new Error('AWRIT_ELECTRON is required for the terminal client');
-      const fd = fs.openSync(path.join(path.dirname(socketPath), 'owner.log'), 'a', 0o600);
-      const logStart = fs.fstatSync(fd).size;
-      const child = spawn(electron, [entry, `--debug-port=${launch.debugPort}`, '--high-dpi-support=1'], {
-        detached: true,
-        stdio: ['ignore', fd, fd],
-      });
+      const log = path.join(path.dirname(socketPath), 'owner.log');
+      let logStart = 0;
       let spawnError: Error | undefined;
       let earlyExit: string | undefined;
-      let childExitTime: number | undefined;
-      child.once('exit', (code, signal) => {
-        childExitTime = Date.now();
-        // Code 1 is also the expected loser of the single-instance lock race.
-        if (signal || (code !== null && code !== 0 && code !== 1)) {
-          earlyExit = signal ? `signal ${signal}` : `code ${code}`;
-        }
-      });
-      child.on('error', (error) => {
-        spawnError = error;
-      });
-      child.unref();
-      fs.closeSync(fd);
+      let lostLock = false;
+      let startedAt = 0;
+      const startOwner = () => {
+        startedAt = Date.now();
+        const fd = fs.openSync(log, 'a', 0o600);
+        logStart = fs.fstatSync(fd).size;
+        lostLock = false;
+        const child = spawn(electron, [entry, `--debug-port=${launch.debugPort}`, '--high-dpi-support=1'], {
+          detached: true,
+          stdio: ['ignore', fd, fd],
+        });
+        child.once('exit', (code, signal) => {
+          // Code 1 is the loser of the single-instance lock race.
+          if (code === 1) lostLock = true;
+          else if (signal || (code !== null && code !== 0)) {
+            earlyExit = signal ? `signal ${signal}` : `code ${code}`;
+          }
+        });
+        child.on('error', (error) => {
+          spawnError = error;
+        });
+        child.unref();
+        fs.closeSync(fd);
+      };
+      startOwner();
       const deadline = Date.now() + 10000;
       while (!socket && Date.now() < deadline) {
         if (closed) return;
         if (spawnError) throw spawnError;
+        // A retiring owner can still hold the lock without serving; start again once it lets go.
+        if (lostLock && Date.now() - startedAt > 500) startOwner();
         await new Promise((resolve) => setTimeout(resolve, 40));
         try {
           socket = await connect();
         } catch {
-          if (!earlyExit && childExitTime && Date.now() - childExitTime > 300) {
-            earlyExit = 'code 1';
-          }
           if (earlyExit) {
-            const log = path.join(path.dirname(socketPath), 'owner.log');
             throw new Error(`Awrit browser owner exited with ${earlyExit}; see ${log}${logTail(log, logStart)}`);
           }
           /* Lock winner may still be starting. */
@@ -144,6 +150,7 @@ async function main() {
     }
     const connection = socket;
     const send = (value: unknown) => {
+      if (closed) return;
       if (connection.writableLength > 1024 * 1024) {
         cleanup();
         return;
@@ -200,8 +207,13 @@ async function main() {
             if (!control || typeof control !== 'object' || !('type' in control))
               throw new Error('Invalid owner response');
             if (control.type === 'error') {
-              process.exitCode = 1;
               cleanup();
+              // An idle owner from an older build retires instead of serving; start the current one.
+              if ('retry' in control && control.retry === true && !retried) {
+                void main(true);
+                return;
+              }
+              process.exitCode = 1;
               console.error(
                 'message' in control && typeof control.message === 'string'
                   ? control.message

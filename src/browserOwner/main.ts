@@ -1,5 +1,5 @@
 import { normalizePaneLaunch } from './options';
-import { decodeAttach } from './attach';
+import { decodeAttach, StaleOwnerError } from './attach';
 import { startOwnerAgentIpc, type AgentPane } from './agentIpc';
 import type { IpcServer } from '../ipc/socketServer';
 import { ownerBuildIdentity } from './build';
@@ -67,7 +67,8 @@ let remoteOwnerServer: import('../remote/owner').RunningOwner | undefined;
 const agentPanes = new Map<string, AgentPane>();
 let stopping = false;
 let readyToQuit = false;
-const panes = new PaneRegistry(() => void shutdown());
+// Kept up for a while after the last viewer closes so the next one opens without browser startup.
+const panes = new PaneRegistry(() => void shutdown(), 10 * 60_000);
 async function shutdown() {
   if (stopping) return;
   stopping = true;
@@ -175,6 +176,8 @@ app.whenReady().then(async () => {
           } else session?.handle(msg);
         }
       } catch (error) {
+        // An idle owner left over from an older build retires so the client can start the current one.
+        const retire = error instanceof StaleOwnerError && panes.size === 1;
         console.error(
           'Terminal connection rejected:',
           error instanceof Error ? error.message : 'invalid frame',
@@ -184,10 +187,16 @@ app.whenReady().then(async () => {
             JSON.stringify({
               type: 'error',
               message: error instanceof Error ? error.message : 'Invalid terminal request',
+              ...(retire ? { retry: true } : {}),
             }),
           ),
         );
-        socket.end();
+        // Retire only after the retry reply is flushed; shutdown destroys open sockets.
+        socket.end(retire ? () => {
+          // Refuse new clients now; shutdown closes the server only after its async handover.
+          server?.close();
+          panes.shutdown();
+        } : undefined);
       }
     });
     socket.on('error', () => socket.destroy());
