@@ -16,6 +16,16 @@ mod = types.ModuleType('awrit_kitten')
 exec(compile(SRC, 'awrit.py', 'exec'), mod.__dict__)
 
 
+def png_pixels(data):
+    """Decode the kitten's unfiltered 8-bit RGBA PNG: (width, height, top-down pixels)."""
+    import struct, zlib
+    width, height = struct.unpack('>II', data[16:24])
+    raw = zlib.decompress(data[41:data.index(b'IEND') - 8])
+    stride = width * 4 + 1
+    assert all(raw[r * stride] == 0 for r in range(height))
+    return width, height, b''.join(raw[r * stride + 1:(r + 1) * stride] for r in range(height))
+
+
 class Win:
     id = 7
     cwd_of_child = '/work'
@@ -186,13 +196,9 @@ class T(unittest.TestCase):
     def test_design_reviews_only_the_focused_tuios_pane(self):
         child = types.ModuleType('kitty.child')
         child.environ_of_process = lambda pid: {'TUIOS_SERVER': 'work', 'PATH': os.path.dirname(self.exe)}
-        fdt = types.ModuleType('kitty.fast_data_types')
-        # The fake encoder flips Kitty's bottom-up rows the way the real one does.
-        fdt.png_from_32bit_rgba_data = lambda data, w, h, flip: b''.join(
-            data[r * w * 4:(r + 1) * w * 4] for r in reversed(range(h))) + bytes([w, h])
         sys.modules['kitty'] = types.ModuleType('kitty')
-        sys.modules['kitty.child'] = child; sys.modules['kitty.fast_data_types'] = fdt
-        for name in ('kitty.fast_data_types', 'kitty.child', 'kitty'):
+        sys.modules['kitty.child'] = child
+        for name in ('kitty.child', 'kitty'):
             self.addCleanup(sys.modules.pop, name)
         tuios = os.path.join(os.path.dirname(self.exe), 'tuios')
         Path(tuios).write_text('#!/bin/sh\n'); os.chmod(tuios, 0o755)
@@ -209,7 +215,7 @@ class T(unittest.TestCase):
                    'ls': [{'name': 'moved', 'width': 4, 'height': 2}]}.get(cmd[1], {})
             if cmd[1] == 'popup':
                 self.image = Path(unquote(cmd[-4].split('image=')[1]))
-                self.assertEqual(self.image.read_bytes(), bytes(range(80, 88)) + bytes(range(48, 56)) + bytes([2, 2]))
+                self.assertEqual(png_pixels(self.image.read_bytes()), (2, 2, bytes(range(80, 88)) + bytes(range(48, 56))))
             return types.SimpleNamespace(stdout=json.dumps(out))
         foreground = [{'pid': 9, 'cmdline': ['tuios', 'new', 'stale-name']}]
         pane = mod.tuios_pane(foreground, run)
@@ -244,7 +250,7 @@ class T(unittest.TestCase):
         # 7x5 pixels on a 3x2 grid: cell edges round down to pixels.
         out, w, h = mod.crop(bytes(range(140)), 7, 5, (1, 1, 1, 1), 3, 2)
         self.assertEqual((w, h), (2, 3))
-        self.assertEqual(out, b''.join(bytes(range(r * 28 + 8, r * 28 + 16)) for r in range(0, 3)))
+        self.assertEqual(out, [bytes(range(r * 28 + 8, r * 28 + 16)) for r in (2, 1, 0)])
 
     def test_design_in_tuios_awrit_pane_sends_its_key(self):
         win = Win(env=self.env)

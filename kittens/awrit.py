@@ -8,9 +8,11 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
@@ -148,7 +150,7 @@ def terminal_colors(background):
 
 
 def crop(pixels, image_width, image_height, box, columns, rows):
-    """Cut the cell box (x, y, width, height) out of Kitty's bottom-up RGBA capture."""
+    """Cut the cell box (x, y, width, height) out of Kitty's bottom-up RGBA capture, top row first."""
     x, y, width, height = box
     if columns <= 0 or rows <= 0 or width <= 0 or height <= 0 or x < 0 or y < 0 or x + width > columns or y + height > rows:
         raise ValueError('Invalid TUIOS pane: ' + repr((box, columns, rows)))
@@ -156,9 +158,22 @@ def crop(pixels, image_width, image_height, box, columns, rows):
     top, bottom = y * image_height // rows, (y + height) * image_height // rows
     stride = image_width * 4
     # Rows run bottom-up, so image row r is stored at image_height - 1 - r.
-    out = b''.join(pixels[row * stride + left:row * stride + right]
-                   for row in range(image_height - bottom, image_height - top))
+    out = [pixels[row * stride + left:row * stride + right]
+           for row in reversed(range(image_height - bottom, image_height - top))]
     return out, (right - left) // 4, bottom - top
+
+
+def png(rows, width, height):
+    """Encode top-down RGBA rows as PNG.
+
+    zlib level 1 is about three times faster than Kitty's encoder; the file is
+    a temporary capture, so speed matters more than size.
+    """
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    raw = b''.join(b'\0' + row for row in rows)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(raw, 1)) + chunk(b'IEND', b''))
 
 
 def review_pane(boss, source, pane, launcher, extra_env, run=subprocess.run):
@@ -174,13 +189,12 @@ def review_pane(boss, source, pane, launcher, extra_env, run=subprocess.run):
         try:
             if not pixels:
                 raise ValueError('Kitty returned no screenshot')
-            from kitty.fast_data_types import png_from_32bit_rgba_data
-            png = png_from_32bit_rgba_data(*crop(pixels, image_width, image_height, (x + 1, y + 1, width - 2, height - 2),
-                                                 pane['columns'], pane['rows']), True)
+            encoded = png(*crop(pixels, image_width, image_height, (x + 1, y + 1, width - 2, height - 2),
+                                pane['columns'], pane['rows']))
             directory = tempfile.mkdtemp(prefix='awrit-review-')
             image = os.path.join(directory, 'capture.png')
             with open(image, 'xb') as f:
-                f.write(png)
+                f.write(encoded)
             # Every pane shares this Kitty window, so the pane id names the review's source agent.
             pane_id = window['window_id']
             target = f'awrit://terminal-review/{pane_id}?image=' + quote(image, safe='')
