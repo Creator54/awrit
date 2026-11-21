@@ -27,10 +27,14 @@ import { createInputHandler } from '../inputHandler';
 import { createWindowWithToolbar } from '../windows';
 import { getProfileSession, flushProfileSessions } from '../session';
 
-// Linux Chromium needs Vulkan enabled for WebGPU; preserve any existing feature flags.
+// Linux Chromium needs Vulkan for WebGPU on some backends, but forcing it on
+// Wayland can leave offscreen video frames blank. Respect explicit backend/feature flags.
 if (process.platform === 'linux') {
+  const backend = app.commandLine.getSwitchValue('ozone-platform');
+  const wayland = backend === 'wayland' ||
+    ((!backend || backend === 'auto') && Boolean(process.env.WAYLAND_DISPLAY || process.env.WAYLAND_SOCKET));
   const features = app.commandLine.getSwitchValue('enable-features');
-  if (!features.split(',').some((feature) => feature.split(/[<:]/, 1)[0] === 'Vulkan'))
+  if (!wayland && !features.split(',').some((feature) => feature.split(/[<:]/, 1)[0] === 'Vulkan'))
     app.commandLine.appendSwitch('enable-features', [features, 'Vulkan'].filter(Boolean).join(','));
 }
 
