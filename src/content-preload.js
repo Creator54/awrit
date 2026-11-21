@@ -121,7 +121,7 @@ window.addEventListener('message', (event) => {
 try {
   contextBridge.exposeInMainWorld('awrit', {
     isAwrit: true,
-    version: '2.2.2', // x-release-please-version
+    version: '2.3.0', // x-release-please-version
     openExternal: (url) => {
       ipcRenderer.send('awrit:open-external', url);
     },
