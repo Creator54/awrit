@@ -18,10 +18,11 @@ describe('terminal FrozenSource validation', () => {
     });
   });
 
-  test('accepts a TUIOS pane id and names it as a pane', () => {
+  test('accepts a TUIOS pane id without naming it in the notes', () => {
     const windowId = '6e5790e5-e9c0-465c-b039-357f87fb1e79';
     expect(validateFrozenSource({ kind: 'terminal', windowId })).toEqual({ kind: 'terminal', windowId });
-    expect(formatNotes([note], { kind: 'terminal', windowId })).toContain(`TUIOS pane ${windowId}`);
+    expect(formatNotes([note], { kind: 'terminal', windowId })).toBe(formatNotes([note]));
+    expect(formatNotes([note], { kind: 'terminal', windowId, title: 'fish' })).toContain('Source: Terminal (fish)');
   });
 
   test('rejects non-numeric, signed, zero, padded and non-string window ids', () => {

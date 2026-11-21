@@ -133,7 +133,8 @@ test('terminal review selection binds only a live explicitly listed agent', asyn
 
   const list = async () => (await harness.invoke('awrit:list-review-recipients')) as { id: string; label: string; preferred: boolean }[];
   const first = await list();
-  expect(first).toEqual([{ id: first[0]?.id, label: 'test — split agent-7', preferred: false }]);
+  // The only agent open is the default, even when it is not in the reviewed window.
+  expect(first).toEqual([{ id: first[0]?.id, label: 'test — split agent-7', preferred: true }]);
   expect(first[0]?.id).toMatch(/^[a-f0-9]{24}$/);
   // The opaque recipient id is stable across listings.
   expect(await list()).toEqual(first);
@@ -157,6 +158,16 @@ test('terminal review selection binds only a live explicitly listed agent', asyn
   // With one match again, the source window binds without a socket.
   clients = [client];
   expect((await list())[0]?.preferred).toBe(true);
+
+  // Two agents, neither in the reviewed window: the user chooses.
+  const other = fakeClient({ windowId: 'agent-8', harness: 'test' });
+  harness.view.binding = { sourceWindowId: 'tui-3' };
+  clients = [client, other];
+  expect((await list()).some((entry) => entry.preferred)).toBe(false);
+
+  // A TUIOS pane id is not shown: it means nothing to the reader.
+  clients = [fakeClient({ windowId: '6e5790e5-e9c0-465c-b039-357f87fb1e79', harness: 'pi', cwd: '/tmp' })];
+  expect((await list())[0]?.label).toBe('pi — /tmp');
 
   // Once the agent disconnects, a previously listed recipient cannot be selected.
   clients = [];

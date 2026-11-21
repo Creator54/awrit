@@ -373,11 +373,14 @@ export function registerDesignIpc(deps: WindowDesignIpcDeps): WindowDesignIpc {
     const source = view.binding?.sourceWindowId;
     const matching = clients.filter(client => client.windowId === source);
     const boundSocket = view.binding?.clientSocket;
-    const preferred = boundSocket ? matching.find(client => client.socket === boundSocket) : (matching.length === 1 ? matching[0] : undefined);
+    // With one agent open there is nothing to choose: send to it.
+    const preferred = boundSocket
+      ? matching.find(client => client.socket === boundSocket)
+      : matching.length === 1 ? matching[0] : clients.length === 1 ? clients[0] : undefined;
     return clients.map(client => {
       const id = [...reviewRecipients].find(([, existing]) => existing === client)?.[0] ?? crypto.randomBytes(12).toString('hex');
       reviewRecipients.set(id, client);
-      return { id, label: `${client.harness || 'Agent'}${client.windowId ? ` — ${client.windowId.includes('-') && TERMINAL_ID.test(client.windowId) ? 'TUIOS pane' : `split ${client.windowId}`}` : ''}${client.cwd ? ` — ${client.cwd}` : ''}`, preferred: client === preferred };
+      return { id, label: `${client.harness || 'Agent'}${client.windowId && !(client.windowId.includes('-') && TERMINAL_ID.test(client.windowId)) ? ` — split ${client.windowId}` : ''}${client.cwd ? ` — ${client.cwd}` : ''}`, preferred: client === preferred };
     });
   });
   registerToolbarHandler('awrit:select-review-recipient', toolbarContentsId, (event: Electron.IpcMainInvokeEvent, id: unknown) => {
