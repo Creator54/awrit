@@ -11,13 +11,12 @@ export AWRIT_CALLER_CWD="${AWRIT_CALLER_CWD:-$PWD}"
 cd "$(dirname "$0")"
 
 # Evaluating shell.nix takes seconds, so reuse a saved copy of its environment, keyed by the
-# files and nixpkgs it is built from. Any failure here falls through to nix-shell below.
+# files it is built from. Any failure here falls through to nix-shell below.
 if command -v nix >/dev/null 2>&1 && [ -z "$IN_NIX_SHELL" ] && [ -f "shell.nix" ] && [ -e .git ]; then
   cache="${XDG_CACHE_HOME:-$HOME/.cache}/awrit/dev-env"
-  if nixpkgs=$(nix-instantiate --find-file nixpkgs 2>/dev/null) &&
-    files=$(git ls-files -co --exclude-standard -z -- shell.nix package.json awrit-native-rs | xargs -0r sha256sum) &&
+  if files=$(git ls-files -co --exclude-standard -z -- shell.nix flake.lock package.json awrit-native-rs | xargs -0r sha256sum) &&
     [ -n "$files" ]; then
-    key=$(printf '%s\n' "$nixpkgs" "$(uname -m)" "$files" | sha256sum | cut -c1-16)
+    key=$(printf '%s\n' "$(uname -m)" "$files" | sha256sum | cut -c1-16)
   else
     key=
   fi
