@@ -1,4 +1,5 @@
-import ast, sys, types, tempfile, unittest, importlib.util, os
+import ast, json, sys, types, tempfile, unittest, importlib.util, os
+from urllib.parse import unquote
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -181,6 +182,77 @@ class T(unittest.TestCase):
         win.screen = types.SimpleNamespace(color_profile=types.SimpleNamespace(default_bg=types.SimpleNamespace(as_sharp='#282a36')))
         boss = self.run_h([str(ROOT / 'kittens' / 'awrit.py'), 'design'], win)
         self.assertEqual(boss.calls[1][1][-1], '#282a36')
+
+    def test_design_reviews_only_the_focused_tuios_pane(self):
+        child = types.ModuleType('kitty.child')
+        child.environ_of_process = lambda pid: {'TUIOS_SERVER': 'work', 'PATH': os.path.dirname(self.exe)}
+        fdt = types.ModuleType('kitty.fast_data_types')
+        # The fake encoder flips Kitty's bottom-up rows the way the real one does.
+        fdt.png_from_32bit_rgba_data = lambda data, w, h, flip: b''.join(
+            data[r * w * 4:(r + 1) * w * 4] for r in reversed(range(h))) + bytes([w, h])
+        sys.modules['kitty'] = types.ModuleType('kitty')
+        sys.modules['kitty.child'] = child; sys.modules['kitty.fast_data_types'] = fdt
+        for name in ('kitty.fast_data_types', 'kitty.child', 'kitty'):
+            self.addCleanup(sys.modules.pop, name)
+        tuios = os.path.join(os.path.dirname(self.exe), 'tuios')
+        Path(tuios).write_text('#!/bin/sh\n'); os.chmod(tuios, 0o755)
+        self.addCleanup(setattr, mod, 'group_cmdlines', mod.group_cmdlines)
+        jobs = {2: [['fish']]}
+        mod.group_cmdlines = lambda pid: jobs[pid]
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            self.assertEqual(kw['env'].get('TUIOS_SERVER'), 'work')
+            out = {'list-clients': [{'pid': 9, 'session': ''}, {'pid': 9, 'session': 'moved'}],
+                   'list-windows': {'focused_window_id': 'b', 'windows': [
+                       {'window_id': 'a', 'pid': 1}, {'window_id': 'b', 'pid': 2, 'x': 1, 'y': 0, 'width': 3, 'height': 2}]},
+                   'ls': [{'name': 'moved', 'width': 4, 'height': 2}]}.get(cmd[1], {})
+            if cmd[1] == 'popup':
+                self.image = Path(unquote(cmd[-4].split('image=')[1]))
+                self.assertEqual(self.image.read_bytes(), bytes(range(80, 88)) + bytes(range(48, 56)) + bytes([2, 2]))
+            return types.SimpleNamespace(stdout=json.dumps(out))
+        foreground = [{'pid': 9, 'cmdline': ['tuios', 'new', 'stale-name']}]
+        pane = mod.tuios_pane(foreground, run)
+        self.assertEqual((pane['session'], pane['jobs'], pane['window']['window_id']), ('moved', [['fish']], 'b'))
+        self.assertIsNone(mod.tuios_pane([{'pid': 9, 'cmdline': ['fish']}], run))
+
+        boss = Boss(); shots = []
+        boss.request_thumbnail = lambda os_id, cb, window_id, no_scaling: shots.append((window_id, cb))
+        source = types.SimpleNamespace(id=7, os_window_id=1)
+        # An 8x4 pixel capture of a 4x4 cell grid, stored bottom-up, one byte per channel index.
+        # Without its border the pane's inside is cell column 2, rows 1-2: pixel rows 1-2.
+        pane['window'].update(x=1, y=0, width=3, height=4); pane['rows'] = 4
+        mod.review_pane(boss, source, pane, self.exe, {'AWRIT_TERMINAL_SCHEME': 'dark'}, run)
+        self.assertEqual(shots[0][0], 7)
+        shots[0][1](1, 7, bytes(range(128)), 8, 4)
+        self.assertEqual(boss.errors, [])
+        popup = calls[-1]
+        self.assertEqual(popup[:8], [tuios, 'popup', '-s', 'moved', '--over', 'b', '--dim', '0'])
+        self.assertIn('AWRIT_SOURCE_WINDOW_ID=7', popup); self.assertIn('AWRIT_TERMINAL_SCHEME=dark', popup)
+        self.assertEqual(popup[-2:], ['--source-window-id', '7'])
+
+        def refuse(cmd, **kw):
+            raise mod.subprocess.CalledProcessError(1, cmd, stderr='no window')
+        self.addCleanup(__import__('shutil').rmtree, self.image.parent)
+        before = set(os.listdir(tempfile.gettempdir()))
+        mod.review_pane(boss, source, pane, self.exe, {}, refuse)
+        shots[1][1](1, 7, bytes(range(128)), 8, 4)
+        self.assertIn('no window', boss.errors[0][1])
+        self.assertEqual(set(os.listdir(tempfile.gettempdir())) - before, set())
+        self.assertRaises(ValueError, mod.crop, b'', 8, 4, (0, 0, 5, 1), 4, 2)
+        # 7x5 pixels on a 3x2 grid: cell edges round down to pixels.
+        out, w, h = mod.crop(bytes(range(140)), 7, 5, (1, 1, 1, 1), 3, 2)
+        self.assertEqual((w, h), (2, 3))
+        self.assertEqual(out, b''.join(bytes(range(r * 28 + 8, r * 28 + 16)) for r in range(0, 3)))
+
+    def test_design_in_tuios_awrit_pane_sends_its_key(self):
+        win = Win(env=self.env)
+        win.child.foreground_processes = [{'pid': 9, 'cmdline': ['tuios', 'new', 'x']}]
+        sent = []; win.send_key = sent.append
+        self.addCleanup(setattr, mod, 'tuios_pane', mod.tuios_pane)
+        mod.tuios_pane = lambda fg: {'jobs': [['node', '/p/dist/terminal/main.js']]}
+        self.assertEqual(self.run_h([str(ROOT / 'kittens' / 'awrit.py'), 'design'], win).calls, [])
+        self.assertEqual(sent, ['alt+d'])
 
     def test_source_missing_and_no_launcher(self):
         b = self.run_h(['split', 'http://x.io'], None)

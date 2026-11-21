@@ -4,12 +4,15 @@ Usage in kitty.conf (not installed by this repo):
     map ctrl+shift+b kitten awrit.py split https://example.com
     map ctrl+shift+a kitten awrit.py tab device view SERIAL
 """
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 MODES = {'split': 'window', 'tab': 'tab', 'overlay': 'overlay', 'window': 'os-window'}
 USAGE = (
@@ -86,6 +89,118 @@ def build_launch(source, mode, target, launcher):
     return tuple(cmd + ['--', launcher] + target + overlay_flags)
 
 
+_AWRIT_MAIN = ('/dist/terminal/main.js', '/src/terminal/main.ts')
+
+
+def runs_awrit(cmdlines):
+    return any(any(str(arg).endswith(_AWRIT_MAIN) for arg in (cmdline or ())) for cmdline in cmdlines)
+
+
+def group_cmdlines(pid):
+    """Command lines of the foreground job on the terminal that pid belongs to."""
+    tpgid = int(subprocess.run(['ps', '-o', 'tpgid=', '-p', str(pid)], capture_output=True,
+                               text=True, timeout=2, check=True).stdout)
+    from kitty.child import cmdline_of_pid, processes_in_group
+    return [cmdline_of_pid(p) for p in processes_in_group(tpgid)]
+
+
+def tuios_pane(foreground, run=subprocess.run):
+    """Find the focused pane when Kitty runs a TUIOS client.
+
+    Kitty only sees the client, so ask the client's daemon which pane has focus.
+    Returns None when no TUIOS client runs.
+    """
+    for process in foreground:
+        cmdline = process.get('cmdline') or ()
+        if len(cmdline) < 2 or os.path.basename(cmdline[0]) != 'tuios' or cmdline[1] not in ('new', 'attach'):
+            continue
+        from kitty.child import environ_of_process
+        client_env = environ_of_process(process['pid'])
+        tuios = shutil.which(cmdline[0], path=client_env.get('PATH')) or cmdline[0]
+        env = {k: v for k, v in os.environ.items() if k != 'TUIOS_SERVER'}
+        if client_env.get('TUIOS_SERVER'):
+            env['TUIOS_SERVER'] = client_env['TUIOS_SERVER']
+        def ask(*args):
+            return json.loads(run([tuios, *args, '--json'], capture_output=True, text=True,
+                                  timeout=2, check=True, env=env).stdout)
+        # A client can switch sessions after it starts, so its argv may be stale.
+        session = next((c['session'] for c in ask('list-clients')
+                        if c.get('pid') == process['pid'] and c.get('session')), None)
+        if session is None:
+            return None
+        listing = ask('list-windows', '-s', session)
+        window = next(w for w in listing['windows'] if w.get('window_id') == listing.get('focused_window_id'))
+        screen = next(s for s in ask('ls') if s.get('name') == session)
+        return {'jobs': group_cmdlines(window['pid']), 'tuios': tuios, 'env': env, 'session': session,
+                'window': window, 'columns': int(screen['width']), 'rows': int(screen['height'])}
+    return None
+
+
+def terminal_colors(background):
+    """Review colours that match the source terminal's #rrggbb background."""
+    if background is None:
+        return {}
+    if len(background) != 7 or background[0] != '#' or any(c not in '0123456789abcdefABCDEF' for c in background[1:]):
+        raise ValueError('Invalid Kitty background color')
+    channels = [int(background[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    light = sum(c * weight for c, weight in zip(channels, (0.2126, 0.7152, 0.0722))) > 0.5
+    return {'AWRIT_TERMINAL_BACKGROUND': background.lower(), 'AWRIT_TERMINAL_SCHEME': 'light' if light else 'dark'}
+
+
+def crop(pixels, image_width, image_height, box, columns, rows):
+    """Cut the cell box (x, y, width, height) out of Kitty's bottom-up RGBA capture."""
+    x, y, width, height = box
+    if columns <= 0 or rows <= 0 or width <= 0 or height <= 0 or x < 0 or y < 0 or x + width > columns or y + height > rows:
+        raise ValueError('Invalid TUIOS pane: ' + repr((box, columns, rows)))
+    left, right = x * image_width // columns * 4, (x + width) * image_width // columns * 4
+    top, bottom = y * image_height // rows, (y + height) * image_height // rows
+    stride = image_width * 4
+    # Rows run bottom-up, so image row r is stored at image_height - 1 - r.
+    out = b''.join(pixels[row * stride + left:row * stride + right]
+                   for row in range(image_height - bottom, image_height - top))
+    return out, (right - left) // 4, bottom - top
+
+
+def review_pane(boss, source, pane, launcher, extra_env, run=subprocess.run):
+    """Freeze one TUIOS pane: a popup over that pane alone shows its capture.
+
+    The popup keeps the pane's border, so the capture is the pane's inside.
+    """
+    window = pane['window']
+    x, y, width, height = (int(window[k]) for k in ('x', 'y', 'width', 'height'))
+
+    def captured(_os_window_id, _window_id, pixels, image_width, image_height):
+        directory = None
+        try:
+            if not pixels:
+                raise ValueError('Kitty returned no screenshot')
+            from kitty.fast_data_types import png_from_32bit_rgba_data
+            png = png_from_32bit_rgba_data(*crop(pixels, image_width, image_height, (x + 1, y + 1, width - 2, height - 2),
+                                                 pane['columns'], pane['rows']), True)
+            directory = tempfile.mkdtemp(prefix='awrit-review-')
+            image = os.path.join(directory, 'capture.png')
+            with open(image, 'xb') as f:
+                f.write(png)
+            target = f'awrit://terminal-review/{source.id}?image=' + quote(image, safe='')
+            env = ['AWRIT_SOURCE_WINDOW_ID=' + str(source.id), *(k + '=' + v for k, v in extra_env.items())]
+            # The review exits on Escape or the design key; its capture goes with it.
+            command = ['/bin/sh', '-c', 'trap \'rm -rf -- "$0"\' EXIT HUP INT TERM; env "$@"', directory, *env,
+                       launcher, target, '--overlay', '--source-window-id', str(source.id)]
+            run([pane['tuios'], 'popup', '-s', pane['session'], '--over', window['window_id'], '--dim', '0',
+                 '--cwd', directory, '--', *command],
+                capture_output=True, text=True, timeout=3, check=True, env=pane['env'])
+        except Exception as error:  # Kitty's event loop drops callback errors silently.
+            # After a timeout the popup may still start; its shell removes the capture.
+            if directory and not isinstance(error, subprocess.TimeoutExpired):
+                shutil.rmtree(directory, ignore_errors=True)
+            detail = getattr(error, 'stderr', None) or str(error)
+            if isinstance(detail, bytes):
+                detail = detail.decode(errors='replace')
+            boss.show_error('awrit', 'Could not open the pane review: ' + detail.strip())
+
+    boss.request_thumbnail(source.os_window_id, captured, window_id=source.id, no_scaling=True)
+
+
 def main(args):
     sys.stderr.write(USAGE)
     return ''
@@ -124,18 +239,31 @@ def handle_result(args, answer, target_window_id, boss):
             # Inspect the foreground job, not the shell's initial argv or title.
             # A global Kitty mapping otherwise steals the browser's own toggle.
             foreground = getattr(source.child, 'foreground_processes', ())
-            if any(any(str(arg).endswith(('/dist/terminal/main.js', '/src/terminal/main.ts')) for arg in (process.get('cmdline') or ())) for process in foreground):
+            if runs_awrit(process.get('cmdline') for process in foreground):
                 source.send_key(design_key)
                 return
             review_launcher = command[1] if len(command) == 2 else launcher
-            review_args = [str(target_window_id), review_launcher]
+            background = None
             profile = getattr(getattr(source, 'screen', None), 'color_profile', None)
             if profile is not None:
                 background = profile.default_bg
                 if not background:
                     from kitty.fast_data_types import get_options
                     background = get_options().background
-                review_args.append(background.as_sharp)
+                background = background.as_sharp
+            try:
+                pane = tuios_pane(foreground)
+            except (OSError, ValueError, KeyError, TypeError, ImportError, StopIteration, subprocess.SubprocessError) as error:
+                raise ValueError('Could not find the focused TUIOS pane: ' + str(error))
+            if pane is not None:
+                if runs_awrit(pane['jobs']):
+                    source.send_key(design_key)
+                else:
+                    review_pane(boss, source, pane, review_launcher, terminal_colors(background))
+                return
+            review_args = [str(target_window_id), review_launcher]
+            if background is not None:
+                review_args.append(background)
             # Kitty overlays share their source's cell grid. Expand that grid
             # for review, then restore the exact overrides (including defaults).
             padding = source.padding.serialize()
